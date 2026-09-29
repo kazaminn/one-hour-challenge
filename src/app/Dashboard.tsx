@@ -56,9 +56,15 @@ function formatTime(iso: string) {
   return timeFormat.format(new Date(iso));
 }
 
-export function Dashboard({ initialState }: { initialState: ChallengeState }) {
+export function Dashboard({
+  initialState,
+  serverNow,
+}: {
+  initialState: ChallengeState;
+  serverNow: number;
+}) {
   const [state, setState] = useState(initialState);
-  const [now, setNow] = useState<number | null>(null);
+  const [now, setNow] = useState<number | null>(serverNow);
   const [adminToken, setAdminToken] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
