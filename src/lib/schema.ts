@@ -17,9 +17,13 @@ const text = (max: number) =>
     )
     .pipe(z.string().max(max));
 
+/** How many mashed clicks one request carries (clients batch rapid taps). */
+const times = z.number().int().min(1).max(20).default(1);
+
 export const cheerSchema = z.object({
   name: text(30).optional(),
   message: text(140).optional(),
+  times,
 });
 
 export const logSchema = z.object({
@@ -60,4 +64,4 @@ export async function parseBody<T extends z.ZodType>(
   return { data: result.data };
 }
 
-export const reactSchema = z.object({ emoji: z.enum(REACTIONS) });
+export const reactSchema = z.object({ emoji: z.enum(REACTIONS), times });

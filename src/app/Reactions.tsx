@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, Stack } from '@kazamitte/kazamitte-ui';
 import { REACTIONS, type ChallengeState, type Reaction } from '@/lib/challenge';
 import { toaster } from './toaster';
+import { useMash } from './useMash';
 
 type Floater = { id: number; emoji: Reaction; left: number };
 
@@ -49,46 +50,34 @@ export function Reactions({
         spawned.push({ id: nextId++, emoji, left: 10 + Math.random() * 80 });
       }
     }
+    show(spawned);
+  }, [reactions]);
+
+  function show(spawned: Floater[]) {
     if (spawned.length === 0) return;
     setFloaters((f) => [...f, ...spawned].slice(-30));
     const ids = new Set(spawned.map((s) => s.id));
     setTimeout(() => setFloaters((f) => f.filter((x) => !ids.has(x.id))), FLOAT_MS);
-  }, [reactions]);
+  }
 
-  async function react(emoji: Reaction) {
-    try {
-      const res = await fetch('/api/react', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ emoji }),
-      });
-      if (res.status === 429) {
-        toaster.create({ title: 'リアクション多すぎ！ちょっと休憩', type: 'warning' });
-        return;
-      }
-      if (!res.ok) throw new Error(String(res.status));
-      onUpdated((await res.json()) as ChallengeState);
-    } catch {
-      toaster.create({ title: '送信に失敗しました', type: 'error' });
-    }
+  /** Own tap: float it right away and pre-count it so the echo from the server doesn't float again. */
+  function localTap(emoji: Reaction) {
+    if (seen.current) seen.current[emoji] = (seen.current[emoji] ?? 0) + 1;
+    if (prefersReducedMotion() && floaters.length > 2) return;
+    show([{ id: nextId++, emoji, left: 10 + Math.random() * 80 }]);
   }
 
   return (
     <>
       <Stack direction="row" gap={1} justify="center" wrap>
         {REACTIONS.map((emoji) => (
-          <Button
+          <ReactionButton
             key={emoji}
-            variant="ghost"
-            size="sm"
-            onClick={() => void react(emoji)}
-            aria-label={`${emoji} を送る（${reactions[emoji] ?? 0}）`}
-          >
-            <span aria-hidden>{emoji}</span>
-            <span className="font-mono text-xs tabular-nums" aria-hidden>
-              {reactions[emoji] ?? 0}
-            </span>
-          </Button>
+            emoji={emoji}
+            count={reactions[emoji] ?? 0}
+            onTap={() => localTap(emoji)}
+            onUpdated={onUpdated}
+          />
         ))}
       </Stack>
       <div aria-hidden className="pointer-events-none fixed inset-x-0 bottom-0 z-50 h-0">
@@ -103,5 +92,52 @@ export function Reactions({
         ))}
       </div>
     </>
+  );
+}
+
+function ReactionButton({
+  emoji,
+  count,
+  onTap,
+  onUpdated,
+}: {
+  emoji: Reaction;
+  count: number;
+  onTap: () => void;
+  onUpdated: (state: ChallengeState) => void;
+}) {
+  const { tap, pending, combo } = useMash(async (times) => {
+    try {
+      const res = await fetch('/api/react', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ emoji, times }),
+      });
+      if (res.status === 429) {
+        toaster.create({ title: 'リアクション多すぎ！ちょっと休憩', type: 'warning' });
+        return;
+      }
+      if (!res.ok) throw new Error(String(res.status));
+      onUpdated((await res.json()) as ChallengeState);
+    } catch {
+      toaster.create({ title: '送信に失敗しました', type: 'error' });
+    }
+  });
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => {
+        tap();
+        onTap();
+      }}
+      aria-label={`${emoji} を送る（${count + pending}）`}
+    >
+      <span aria-hidden>{emoji}</span>
+      <span className="font-mono text-xs tabular-nums" aria-hidden>
+        {combo > 1 ? `×${combo}` : count + pending}
+      </span>
+    </Button>
   );
 }

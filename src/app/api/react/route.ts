@@ -9,6 +9,6 @@ export async function POST(req: Request) {
   const parsed = await parseBody(req, reactSchema);
   if ('error' in parsed) return parsed.error;
 
-  await addReaction(parsed.data.emoji);
+  await addReaction(parsed.data.emoji, parsed.data.times);
   return Response.json(await getState());
 }

@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   if ('error' in parsed) return parsed.error;
   const { name, message } = parsed.data;
 
-  await addCheer(name || '名無しさん', message || '🔥');
+  await addCheer(name || '名無しさん', message || '🔥', parsed.data.times);
   // Fresh state, so the poster sees their cheer despite the cached GET.
   return Response.json(await getState());
 }

@@ -108,12 +108,15 @@ export async function addLog(body: string, milestone: string | null) {
   });
 }
 
-export async function addCheer(name: string, message: string) {
+export async function addCheer(name: string, message: string, times = 1) {
   const c = await db();
-  await c.execute({
-    sql: 'INSERT INTO cheers (name, message) VALUES (?, ?)',
-    args: [name, message],
-  });
+  await c.batch(
+    Array.from({ length: times }, () => ({
+      sql: 'INSERT INTO cheers (name, message) VALUES (?, ?)',
+      args: [name, message],
+    })),
+    'write',
+  );
 }
 
 export async function addIdea(title: string) {
@@ -153,10 +156,10 @@ export async function countRecentHits(key: string, windowSec: number): Promise<n
   return Number(count?.rows[0]?.n ?? 0);
 }
 
-export async function addReaction(emoji: string) {
+export async function addReaction(emoji: string, times = 1) {
   const c = await db();
   await c.execute({
-    sql: 'INSERT INTO reactions (emoji, n) VALUES (?, 1) ON CONFLICT(emoji) DO UPDATE SET n = n + 1',
-    args: [emoji],
+    sql: 'INSERT INTO reactions (emoji, n) VALUES (?, ?) ON CONFLICT(emoji) DO UPDATE SET n = n + excluded.n',
+    args: [emoji, times],
   });
 }

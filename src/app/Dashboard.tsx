@@ -18,7 +18,9 @@ import {
 import { CHALLENGE, MILESTONES, taunt, type ChallengeState } from '@/lib/challenge';
 import { IdeaBox } from './IdeaBox';
 import { Reactions } from './Reactions';
+import { ResultScreen } from './ResultScreen';
 import { ThemeToggle } from './ThemeToggle';
+import { useMash } from './useMash';
 import { toaster } from './toaster';
 
 const START = new Date(CHALLENGE.startAt).getTime();
@@ -86,6 +88,10 @@ export function Dashboard({ initialState }: { initialState: ChallengeState }) {
     now == null ? 0 : Math.min(100, Math.max(0, ((now - START) / (END - START)) * 100));
   const phase =
     now == null ? null : now < START ? 'before' : now >= END ? 'finished' : 'live';
+
+  // Pop the result screen once when time runs out (or on arrival afterwards).
+  const [resultDismissed, setResultDismissed] = useState(false);
+  const showResult = phase === 'finished' && !resultDismissed;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:py-12">
@@ -224,6 +230,7 @@ export function Dashboard({ initialState }: { initialState: ChallengeState }) {
           <CheerCard state={state} onPosted={setState} />
         </div>
       </Stack>
+      {showResult && <ResultScreen state={state} onClose={() => setResultDismissed(true)} />}
       <Toaster toaster={toaster} />
     </main>
   );
@@ -239,16 +246,12 @@ function QuickCheer({
   onCheered: (state: ChallengeState) => void;
   children?: React.ReactNode;
 }) {
-  const [sending, setSending] = useState(false);
-  const [pop, setPop] = useState(0);
-
-  async function cheer() {
-    setSending(true);
+  const { tap, pending, combo } = useMash(async (times) => {
     try {
       const res = await fetch('/api/cheer', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify({ times }),
       });
       if (res.status === 429) {
         toaster.create({ title: '応援が熱すぎます🔥 少し冷ましてね', type: 'warning' });
@@ -256,13 +259,11 @@ function QuickCheer({
       }
       if (!res.ok) throw new Error(String(res.status));
       onCheered((await res.json()) as ChallengeState);
-      setPop((n) => n + 1);
     } catch {
       toaster.create({ title: '送信に失敗しました', type: 'error' });
-    } finally {
-      setSending(false);
     }
-  }
+  });
+  const shown = count + pending;
 
   return (
     <Card.Root variant="elevated" className="md:w-56">
@@ -272,14 +273,13 @@ function QuickCheer({
             <span>みんなの応援</span>
           </Text>
           <output
-            key={pop}
-            aria-live="polite"
+            key={shown}
             className="inline-block font-mono text-4xl font-bold tabular-nums text-(--r-base-fg-strong) motion-safe:animate-[cheer-pop_300ms_ease-out]"
           >
-            🔥 {count}
+            🔥 {shown}
           </output>
-          <Button size="lg" className="w-full" disabled={sending} onClick={() => void cheer()}>
-            ワンタップで応援
+          <Button size="lg" className="w-full" onClick={tap}>
+            {combo > 1 ? `×${combo} COMBO!!` : '連打で応援'}
           </Button>
           {children}
         </Stack>
