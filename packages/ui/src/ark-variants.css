@@ -1,0 +1,75 @@
+/*
+ * Variants for the data attributes Ark UI (zag-js) sets on its parts.
+ *
+ * The `ark-` prefix says "look at the Ark docs for this component": these
+ * react only to Ark's data attributes, never to native pseudo-classes, so
+ * they never shadow Tailwind's own open: / disabled: / checked:.
+ *
+ * Which to use on a given element:
+ * - An Ark part: ark-*. Ark copies the state onto every part, so no
+ *   descendant matching is needed.
+ * - A native control you render yourself (Button's <button>): the
+ *   built-in disabled: / focus-visible:, since the attribute lives there.
+ */
+
+/* data-state */
+@custom-variant ark-open (&[data-state='open']);
+@custom-variant ark-closed (&[data-state='closed']);
+@custom-variant ark-checked (&[data-state='checked']);
+@custom-variant ark-unchecked (&[data-state='unchecked']);
+@custom-variant ark-indeterminate (&[data-state='indeterminate']);
+@custom-variant ark-on (&[data-state='on']);
+@custom-variant ark-off (&[data-state='off']);
+@custom-variant ark-visible (&[data-state='visible']);
+@custom-variant ark-hidden (&[data-state='hidden']);
+
+/* boolean attributes */
+@custom-variant ark-disabled (&[data-disabled]);
+@custom-variant ark-invalid (&[data-invalid]);
+@custom-variant ark-readonly (&[data-readonly]);
+@custom-variant ark-required (&[data-required]);
+@custom-variant ark-hover (&[data-hover]);
+@custom-variant ark-focus (&[data-focus]);
+@custom-variant ark-focus-visible (&[data-focus-visible]);
+@custom-variant ark-active (&[data-active]);
+@custom-variant ark-highlighted (&[data-highlighted]);
+@custom-variant ark-selected (&[data-selected]);
+@custom-variant ark-current (&[data-current]);
+@custom-variant ark-dragging (&[data-dragging]);
+@custom-variant ark-placeholder-shown (&[data-placeholder-shown]);
+@custom-variant ark-copied (&[data-copied]);
+@custom-variant ark-empty (&[data-empty]);
+@custom-variant ark-half (&[data-half]);
+/* Steps marks each item as before, at or after the current step */
+@custom-variant ark-complete (&[data-complete]);
+@custom-variant ark-incomplete (&[data-incomplete]);
+@custom-variant ark-nested-open (&[data-nested-drawer-open]);
+/* scroll-area: set on the scrollbar while its viewport is scrolling */
+@custom-variant ark-scrolling (&[data-scrolling]);
+
+/* orientation and floating placement */
+@custom-variant ark-horizontal (&[data-orientation='horizontal']);
+@custom-variant ark-vertical (&[data-orientation='vertical']);
+@custom-variant ark-side-top (&[data-side='top']);
+@custom-variant ark-side-right (&[data-side='right']);
+@custom-variant ark-side-bottom (&[data-side='bottom']);
+@custom-variant ark-side-left (&[data-side='left']);
+@custom-variant ark-align-start (&[data-align='start']);
+@custom-variant ark-align-center (&[data-align='center']);
+@custom-variant ark-align-end (&[data-align='end']);
+
+/* the physical edge a drawer slides in from */
+@custom-variant ark-swipe-up (&[data-swipe-direction='up']);
+@custom-variant ark-swipe-down (&[data-swipe-direction='down']);
+@custom-variant ark-swipe-left (&[data-swipe-direction='left']);
+@custom-variant ark-swipe-right (&[data-swipe-direction='right']);
+
+/* date input segments and calendar cells */
+@custom-variant ark-literal (&[data-type='literal']);
+@custom-variant ark-today (&[data-today]);
+@custom-variant ark-weekend (&[data-weekend]);
+@custom-variant ark-in-range (&[data-in-range]);
+@custom-variant ark-range-start (&[data-range-start]);
+@custom-variant ark-range-end (&[data-range-end]);
+@custom-variant ark-outside-range (&[data-outside-range]);
+@custom-variant ark-unavailable (&[data-unavailable]);

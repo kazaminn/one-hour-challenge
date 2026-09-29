@@ -1,0 +1,13 @@
+@import '@kazamitte/design-token/index.css';
+@import '@kazamitte/design-token/theme/color/default.css';
+@import '@kazamitte/design-token/theme/style/neutral.css';
+@import '@kazamitte/kazamitte-ui/ark-variants.css';
+
+/* Tailwind skips node_modules, so these packages have to be listed explicitly. */
+@source '../../node_modules/@kazamitte/design-token';
+@source '../../packages/ui/src';
+
+body {
+  background-color: var(--r-base-bg);
+  color: var(--r-base-fg);
+}
