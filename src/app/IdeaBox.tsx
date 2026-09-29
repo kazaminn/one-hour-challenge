@@ -127,7 +127,7 @@ export function IdeaBox({
                 const badge = idea.status === 'open' ? null : STATUS_BADGE[idea.status];
                 return (
                   <li key={idea.id}>
-                    <Stack direction="row" gap={3} align="center" justify="between">
+                    <Stack direction="row" gap={3} align="center" justify="between" wrap>
                       <Stack direction="row" gap={2} align="center" wrap>
                         <Text asChild textStyle="mono-16" weight="bold">
                           <span>{idea.votes}票</span>

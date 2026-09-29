@@ -34,6 +34,7 @@ const timeFormat = new Intl.DateTimeFormat('ja-JP', {
 });
 
 const ADMIN_KEY = 'admin-token';
+const CHEER_NAME_KEY = 'cheer-name';
 
 /**
  * Reads #admin=<token> (a fragment, so it never reaches the server or its
@@ -134,7 +135,7 @@ export function Dashboard({
             </Text>
             <ThemeToggle />
           </Stack>
-          <Heading level={1} size="display-44">
+          <Heading level={1} size="display-44" className="max-md:text-highlight-28">
             {CHALLENGE.title}
           </Heading>
           {now != null && (
@@ -205,22 +206,9 @@ export function Dashboard({
           </Card.Root>
         </div>
 
-        <Card.Root>
-          <Card.Header>
-            <Card.Title>進捗</Card.Title>
-          </Card.Header>
-          <Card.Body>
-            <Steps.Root steps={MILESTONES} step={completedSteps}>
-              <Steps.Progress />
-            </Steps.Root>
-          </Card.Body>
-        </Card.Root>
+        <div className="grid items-start gap-4 md:grid-cols-2">
+          <CheerCard state={state} onPosted={setState} />
 
-        <IdeaBox ideas={state.ideas} adminToken={adminToken} onUpdated={setState} />
-
-        {adminToken && <AdminForm token={adminToken} doneSet={done} onPosted={setState} />}
-
-        <div className="grid gap-4 md:grid-cols-2">
           <Card.Root>
             <Card.Header>
               <Card.Title>開発ログ</Card.Title>
@@ -230,7 +218,7 @@ export function Dashboard({
               {state.logs.length === 0 ? (
                 <Text tone="muted">まだログはありません</Text>
               ) : (
-                <ol className="flex flex-col gap-3">
+                <ol className="flex max-h-[28rem] flex-col gap-3 overflow-y-auto pr-1">
                   {state.logs.map((log) => (
                     <li key={log.id}>
                       <Stack direction="row" gap={2} align="center" wrap>
@@ -250,9 +238,22 @@ export function Dashboard({
               )}
             </Card.Body>
           </Card.Root>
-
-          <CheerCard state={state} onPosted={setState} />
         </div>
+
+        <Card.Root>
+          <Card.Header>
+            <Card.Title>進捗</Card.Title>
+          </Card.Header>
+          <Card.Body>
+            <Steps.Root steps={MILESTONES} step={completedSteps}>
+              <Steps.Progress />
+            </Steps.Root>
+          </Card.Body>
+        </Card.Root>
+
+        <IdeaBox ideas={state.ideas} adminToken={adminToken} onUpdated={setState} />
+
+        {adminToken && <AdminForm token={adminToken} doneSet={done} onPosted={setState} />}
       </Stack>
       {showResult && <ResultScreen state={state} onClose={() => setResultDismissed(true)} />}
       <Toaster toaster={toaster} />
@@ -302,7 +303,8 @@ function QuickCheer({
           >
             🔥 {shown}
           </output>
-          <Button size="lg" className="w-full" onClick={tap}>
+          {/* touch-manipulation: stops iOS double-tap zoom from eating rapid taps. */}
+          <Button size="lg" className="w-full touch-manipulation select-none" onClick={tap}>
             {combo > 1 ? `×${combo} COMBO!!` : '連打で応援'}
           </Button>
           {children}
@@ -322,19 +324,43 @@ function CheerCard({
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [mine, setMine] = useState<Set<number>>(new Set());
+
+  // Remember the name so repeat cheerers don't retype it.
+  useEffect(() => {
+    try {
+      setName(localStorage.getItem(CHEER_NAME_KEY) ?? '');
+    } catch {
+      // Storage unavailable: the field just starts empty.
+    }
+  }, []);
+
+  const trimmed = message.trim();
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!trimmed || sending) return;
     setSending(true);
     try {
       const res = await fetch('/api/cheer', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, message }),
+        body: JSON.stringify({ name, message: trimmed }),
       });
+      if (res.status === 429) {
+        toaster.create({ title: '少し時間をおいてから送ってください', type: 'warning' });
+        return;
+      }
       if (!res.ok) throw new Error(String(res.status));
-      onPosted((await res.json()) as ChallengeState);
+      const { postedId, ...next } = (await res.json()) as ChallengeState & { postedId?: number };
+      onPosted(next);
+      if (postedId != null) setMine((m) => new Set(m).add(postedId));
       setMessage('');
+      try {
+        localStorage.setItem(CHEER_NAME_KEY, name);
+      } catch {
+        // Not remembered; fine.
+      }
       toaster.create({ title: '応援ありがとう！🔥', type: 'success' });
     } catch {
       toaster.create({ title: '送信に失敗しました', type: 'error' });
@@ -346,53 +372,70 @@ function CheerCard({
   return (
     <Card.Root>
       <Card.Header>
-        <Card.Title>応援する</Card.Title>
-        <Card.Description>空欄のまま送っても 🔥 が届きます</Card.Description>
+        <Card.Title>応援メッセージ</Card.Title>
+        <Card.Description>ひとことどうぞ。Enter で送信できます</Card.Description>
       </Card.Header>
       <Card.Body>
         <Stack gap={6}>
           <form onSubmit={submit}>
             <Stack gap={3}>
               <Field.Root>
-                <Field.Label>名前</Field.Label>
+                <Field.Label>メッセージ</Field.Label>
                 <Field.Input
-                  value={name}
-                  maxLength={30}
-                  placeholder="名無しさん"
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </Field.Root>
-              <Field.Root>
-                <Field.Label>ひとこと</Field.Label>
-                <Field.Textarea
                   value={message}
                   maxLength={140}
-                  rows={2}
+                  enterKeyHint="send"
+                  autoComplete="off"
+                  placeholder="例：がんばれ〜！"
                   onChange={(e) => setMessage(e.target.value)}
                 />
+                <Field.HelperText>{message.length} / 140</Field.HelperText>
               </Field.Root>
-              <div>
-                <Button type="submit" disabled={sending}>
-                  🔥 応援を送る
+              <div className="grid items-end gap-3 sm:grid-cols-[1fr_auto]">
+                <Field.Root>
+                  <Field.Label>名前（任意・次回も使います）</Field.Label>
+                  <Field.Input
+                    value={name}
+                    maxLength={30}
+                    autoComplete="nickname"
+                    placeholder="名無しさん"
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </Field.Root>
+                <Button type="submit" disabled={sending || !trimmed} className="max-sm:w-full">
+                  🔥 送る
                 </Button>
               </div>
             </Stack>
           </form>
-          <ul className="flex flex-col gap-3">
-            {state.cheers.map((c) => (
-              <li key={c.id}>
-                <Stack direction="row" gap={2} align="center">
-                  <Text textStyle="dense-14" weight="bold">
-                    {c.name}
-                  </Text>
-                  <Text asChild textStyle="mono-14" tone="muted">
-                    <time dateTime={c.createdAt}>{formatTime(c.createdAt)}</time>
-                  </Text>
-                </Stack>
-                <Text>{c.message}</Text>
-              </li>
-            ))}
-          </ul>
+
+          {state.cheers.length === 0 ? (
+            <Text tone="muted">まだメッセージはありません。最初のひとことをどうぞ</Text>
+          ) : (
+            <ul className="flex max-h-[28rem] flex-col gap-2 overflow-y-auto pr-1">
+              {state.cheers.map((c) => (
+                <li
+                  key={c.id}
+                  className={
+                    mine.has(c.id)
+                      ? 'rounded-lg bg-(--r-primary-bg-muted) px-3 py-2'
+                      : 'rounded-lg bg-(--r-base-bg-subtle) px-3 py-2'
+                  }
+                >
+                  <Stack direction="row" gap={2} align="center" justify="between">
+                    <Text textStyle="dense-14" weight="bold" truncate>
+                      {c.name}
+                      {mine.has(c.id) && '（あなた）'}
+                    </Text>
+                    <Text asChild textStyle="mono-14" tone="muted">
+                      <time dateTime={c.createdAt}>{formatTime(c.createdAt)}</time>
+                    </Text>
+                  </Stack>
+                  <Text className="break-words">{c.message}</Text>
+                </li>
+              ))}
+            </ul>
+          )}
         </Stack>
       </Card.Body>
     </Card.Root>

@@ -127,7 +127,8 @@ function ReactionButton({
   return (
     <Button
       variant="ghost"
-      size="sm"
+      size="md"
+      className="min-h-11 min-w-11 touch-manipulation select-none"
       onClick={() => {
         tap();
         onTap();
