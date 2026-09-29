@@ -8,17 +8,16 @@ import {
   Field,
   Heading,
   Progress,
+  Separator,
   Stack,
-  Stat,
-  Steps,
   Text,
   Timer,
   Toaster,
 } from '@kazamitte/kazamitte-ui';
 import { CHALLENGE, MILESTONES, taunt, type ChallengeState } from '@/lib/challenge';
 import { IdeaBox } from './IdeaBox';
+import { Journey } from './Journey';
 import { Reactions } from './Reactions';
-import { ResultScreen } from './ResultScreen';
 import { ThemeToggle } from './ThemeToggle';
 import { useMash } from './useMash';
 import { toaster } from './toaster';
@@ -51,14 +50,6 @@ function takeAdminToken(): string | null {
   } catch {
     return fromUrl;
   }
-}
-
-function formatOvertime(ms: number) {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
-  const ss = String(s % 60).padStart(2, '0');
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 function formatTime(iso: string) {
@@ -103,63 +94,108 @@ export function Dashboard({
     now == null ? 0 : Math.min(100, Math.max(0, ((now - START) / (END - START)) * 100));
   const phase =
     now == null ? null : now < START ? 'before' : now >= END ? 'finished' : 'live';
+  const finished = phase === 'finished';
 
-  // Pop the result screen once when time runs out (or on arrival afterwards).
-  const [resultDismissed, setResultDismissed] = useState(false);
-  const showResult = phase === 'finished' && !resultDismissed;
+  const deployLog = state.logs.find((l) => l.milestone === 'deploy');
+  const firstDeployMin = deployLog
+    ? Math.round((new Date(deployLog.createdAt).getTime() - START) / 60_000)
+    : null;
+  const totalReactions = Object.values(state.reactions).reduce((s, n) => s + (n ?? 0), 0);
+
+  const facts = [
+    { label: '最初の公開まで', value: firstDeployMin != null ? `${firstDeployMin}分` : '—' },
+    { label: '作業の記録', value: `${state.logs.length}件` },
+    { label: '届いた応援', value: `${state.cheerCount}` },
+    { label: 'リアクション', value: `${totalReactions}` },
+  ];
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:py-12">
       <Stack gap={8}>
-        <div className="grid items-center gap-6 md:grid-cols-[1fr_auto]">
-        <Stack gap={3}>
-          <Stack direction="row" gap={2} align="center" wrap>
-            {phase === 'live' && (
-              <Badge tone="error" variant="solid">
-                ● LIVE
-              </Badge>
-            )}
-            {phase === 'finished' && (
-              <Badge tone={completedSteps === MILESTONES.length ? 'success' : 'warning'} variant="solid">
-                {completedSteps === MILESTONES.length ? '完走！' : '終了'}
-              </Badge>
-            )}
-            {phase === 'finished' && (
-              <Button size="sm" variant="ghost" onClick={() => setResultDismissed(false)}>
-                🏆 リザルトを見る
-              </Button>
-            )}
-            {phase === 'before' && <Badge tone="info">開始前</Badge>}
-            <Text textStyle="dense-14" tone="muted">
-              {formatTime(CHALLENGE.startAt)} – {formatTime(CHALLENGE.endAt)} JST
+        <div className="grid items-start gap-6 md:grid-cols-[1fr_auto]">
+          <Stack gap={4}>
+            <Stack direction="row" gap={2} align="center" wrap>
+              {phase === 'live' && (
+                <Badge tone="error" variant="solid">
+                  ● LIVE 制作中
+                </Badge>
+              )}
+              {finished && (
+                <Badge tone="success" variant="solid">
+                  {completedSteps === MILESTONES.length ? '✓ 60分で完成しました' : '終了しました'}
+                </Badge>
+              )}
+              {phase === 'before' && <Badge tone="info">まもなく開始</Badge>}
+              <Text textStyle="dense-14" tone="muted">
+                {formatTime(CHALLENGE.startAt)} – {formatTime(CHALLENGE.endAt)}
+              </Text>
+              <ThemeToggle />
+            </Stack>
+
+            <Heading level={1} size="display-44" className="max-md:text-highlight-28">
+              {CHALLENGE.title}
+            </Heading>
+
+            <Text textStyle="body-18">
+              {finished
+                ? 'エンジニアが AI（Claude）と一緒に、ゼロからこのページを60分で作って公開しました。いま見ているこのページが、その完成品です。'
+                : 'エンジニアが AI（Claude）と一緒に、ゼロからこのページを作っています。いま見ているこのページが、まさに作っている最中のアプリです。'}
             </Text>
-            <ThemeToggle />
+
+            {phase === 'live' && now != null && (
+              <Text textStyle="body-18" tone="strong" weight="bold" aria-live="polite">
+                {taunt(END - now, completedSteps, MILESTONES.length)}
+              </Text>
+            )}
+
+            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {facts.map((f) => (
+                <div
+                  key={f.label}
+                  className="rounded-lg border border-(--r-base-border) bg-(--r-base-bg-subtle) px-3 py-2"
+                >
+                  <dt>
+                    <Text asChild textStyle="dense-14" tone="muted">
+                      <span>{f.label}</span>
+                    </Text>
+                  </dt>
+                  <dd>
+                    <Text asChild textStyle="mono-18" tone="strong" weight="bold">
+                      <span className="text-2xl tabular-nums">{f.value}</span>
+                    </Text>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+
+            <nav aria-label="このページでできること">
+              <Stack direction="row" gap={2} wrap>
+                <Button asChild variant="outline" size="sm">
+                  <a href="#message">💬 メッセージを送る</a>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <a href="#ideas">💡 次に作る機能に投票</a>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <a href="#journey">📜 60分のあゆみを読む</a>
+                </Button>
+              </Stack>
+            </nav>
           </Stack>
-          <Heading level={1} size="display-44" className="max-md:text-highlight-28">
-            {CHALLENGE.title}
-          </Heading>
-          {now != null && (
-            <Text textStyle="body-20" tone="strong" weight="bold" aria-live="polite">
-              {taunt(END - now, completedSteps, MILESTONES.length)}
-            </Text>
-          )}
-          <Text tone="muted">
-            Next.js + 自作デザインシステム + Turso + Vercel。このページ自体がチャレンジの成果物です。
-          </Text>
-        </Stack>
+
           <QuickCheer count={state.cheerCount} onCheered={setState}>
             <Reactions reactions={state.reactions} onUpdated={setState} />
           </QuickCheer>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card.Root variant="elevated" className="md:col-span-2">
+        {!finished && (
+          <Card.Root variant="elevated">
             <Card.Header>
               <Card.Title>残り時間</Card.Title>
             </Card.Header>
             <Card.Body>
               <Stack gap={4}>
-                {now != null && phase !== 'finished' && (
+                {now != null && (
                   <Timer
                     key={phase}
                     countdown
@@ -167,16 +203,6 @@ export function Dashboard({
                     startMs={Math.max(0, END - (phase === 'before' ? START : now))}
                     controls={false}
                   />
-                )}
-                {phase === 'finished' && now != null && (
-                  <Stack gap={1}>
-                    <Text textStyle="dense-14" tone="muted">
-                      終了からの経過時間
-                    </Text>
-                    <Text asChild textStyle="mono-18" tone="strong" weight="bold">
-                      <span className="text-4xl tabular-nums">+{formatOvertime(now - END)}</span>
-                    </Text>
-                  </Stack>
                 )}
                 <Progress
                   value={Math.round(elapsedPct)}
@@ -187,75 +213,31 @@ export function Dashboard({
               </Stack>
             </Card.Body>
           </Card.Root>
-
-          <Card.Root variant="elevated">
-            <Card.Body>
-              <Stack gap={6}>
-                <Stat.Root>
-                  <Stat.Label>開発ログ</Stat.Label>
-                  <Stat.ValueText>{state.logs.length} 件</Stat.ValueText>
-                </Stat.Root>
-                <Stat.Root>
-                  <Stat.Label>マイルストーン</Stat.Label>
-                  <Stat.ValueText>
-                    {completedSteps} / {MILESTONES.length}
-                  </Stat.ValueText>
-                </Stat.Root>
-              </Stack>
-            </Card.Body>
-          </Card.Root>
-        </div>
+        )}
 
         <div className="grid items-start gap-4 md:grid-cols-2">
           <CheerCard state={state} onPosted={setState} />
-
-          <Card.Root>
-            <Card.Header>
-              <Card.Title>開発ログ</Card.Title>
-              <Card.Description>最新のものが上に表示されます</Card.Description>
-            </Card.Header>
-            <Card.Body>
-              {state.logs.length === 0 ? (
-                <Text tone="muted">まだログはありません</Text>
-              ) : (
-                <ol className="flex max-h-[28rem] flex-col gap-3 overflow-y-auto pr-1">
-                  {state.logs.map((log) => (
-                    <li key={log.id}>
-                      <Stack direction="row" gap={2} align="center" wrap>
-                        <Text asChild textStyle="mono-14" tone="muted">
-                          <time dateTime={log.createdAt}>{formatTime(log.createdAt)}</time>
-                        </Text>
-                        {log.milestone && (
-                          <Badge tone="success" size="sm">
-                            ✓ {MILESTONES.find((m) => m.value === log.milestone)?.title}
-                          </Badge>
-                        )}
-                      </Stack>
-                      <Text>{log.body}</Text>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </Card.Body>
-          </Card.Root>
+          <Journey logs={state.logs} live={!finished} />
         </div>
 
-        <Card.Root>
-          <Card.Header>
-            <Card.Title>進捗</Card.Title>
-          </Card.Header>
-          <Card.Body>
-            <Steps.Root steps={MILESTONES} step={completedSteps}>
-              <Steps.Progress />
-            </Steps.Root>
-          </Card.Body>
-        </Card.Root>
-
-        <IdeaBox ideas={state.ideas} adminToken={adminToken} onUpdated={setState} />
+        <div id="ideas" className="scroll-mt-6">
+          <IdeaBox ideas={state.ideas} adminToken={adminToken} onUpdated={setState} />
+        </div>
 
         {adminToken && <AdminForm token={adminToken} doneSet={done} onPosted={setState} />}
+
+        <footer className="border-t border-(--r-base-border) pt-6">
+          <Text textStyle="dense-14" tone="muted">
+            使った技術：Next.js / 自作デザインシステム（kazamitte-ui）/ Turso / Vercel　·{' '}
+            <a
+              href="https://github.com/kazaminn/one-hour-challenge"
+              className="underline underline-offset-2"
+            >
+              ソースコード（GitHub）
+            </a>
+          </Text>
+        </footer>
       </Stack>
-      {showResult && <ResultScreen state={state} onClose={() => setResultDismissed(true)} />}
       <Toaster toaster={toaster} />
     </main>
   );
@@ -291,11 +273,11 @@ function QuickCheer({
   const shown = count + pending;
 
   return (
-    <Card.Root variant="elevated" className="md:w-56">
+    <Card.Root id="cheer" variant="elevated" className="scroll-mt-6 md:w-64">
       <Card.Body>
         <Stack gap={3} align="center">
-          <Text asChild textStyle="dense-14" tone="muted">
-            <span>みんなの応援</span>
+          <Text asChild textStyle="dense-14" weight="bold">
+            <span>ボタンで応援しよう</span>
           </Text>
           <output
             key={shown}
@@ -305,8 +287,15 @@ function QuickCheer({
           </output>
           {/* touch-manipulation: stops iOS double-tap zoom from eating rapid taps. */}
           <Button size="lg" className="w-full touch-manipulation select-none" onClick={tap}>
-            {combo > 1 ? `×${combo} COMBO!!` : '連打で応援'}
+            {combo > 1 ? `×${combo} COMBO!!` : '🔥 応援する'}
           </Button>
+          <Text asChild textStyle="dense-14" tone="muted">
+            <span>何回でも押せます（連打OK）</span>
+          </Text>
+          <Separator />
+          <Text asChild textStyle="dense-14" tone="muted">
+            <span>絵文字は見ている全員の画面に飛びます</span>
+          </Text>
           {children}
         </Stack>
       </Card.Body>
@@ -370,10 +359,10 @@ function CheerCard({
   }
 
   return (
-    <Card.Root>
+    <Card.Root id="message" className="scroll-mt-6">
       <Card.Header>
-        <Card.Title>応援メッセージ</Card.Title>
-        <Card.Description>ひとことどうぞ。Enter で送信できます</Card.Description>
+        <Card.Title>💬 応援メッセージ</Card.Title>
+        <Card.Description>ひとことどうぞ。書いたメッセージはここに並びます</Card.Description>
       </Card.Header>
       <Card.Body>
         <Stack gap={6}>

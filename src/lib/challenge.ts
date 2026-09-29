@@ -1,17 +1,17 @@
 import type { Step } from '@kazamitte/kazamitte-ui';
 
 export const CHALLENGE = {
-  title: '60分でアプリをデプロイするチャレンジ',
+  title: '60分で、Webアプリを作って公開する',
   startAt: process.env.NEXT_PUBLIC_CHALLENGE_START ?? '2026-09-29T13:20:00+09:00',
   endAt: process.env.NEXT_PUBLIC_CHALLENGE_END ?? '2026-09-29T14:20:00+09:00',
 };
 
 export const MILESTONES: Step[] = [
   { value: 'idea', title: 'アイデア決定', description: 'このページを作る' },
-  { value: 'setup', title: 'セットアップ', description: 'Next.js + デザインシステム' },
-  { value: 'api', title: 'API', description: 'Turso に保存' },
-  { value: 'ui', title: 'UI', description: 'このダッシュボード' },
-  { value: 'deploy', title: 'デプロイ', description: 'Vercel に公開' },
+  { value: 'setup', title: '準備', description: '開発の土台づくり' },
+  { value: 'api', title: 'データ保存', description: '応援や記録を保存する仕組み' },
+  { value: 'ui', title: '画面づくり', description: 'このページの見た目' },
+  { value: 'deploy', title: '公開', description: '誰でも見られる状態に' },
 ];
 
 export type Log = {
