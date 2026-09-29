@@ -124,14 +124,9 @@ export function Dashboard({
               </Badge>
             )}
             {phase === 'finished' && (
-              <>
-                <Badge tone="secondary" variant="solid">
-                  EXTENDED ROUND
-                </Badge>
-                <Button size="sm" variant="ghost" onClick={() => setResultDismissed(false)}>
-                  🏆 リザルトを見る
-                </Button>
-              </>
+              <Button size="sm" variant="ghost" onClick={() => setResultDismissed(false)}>
+                🏆 リザルトを見る
+              </Button>
             )}
             {phase === 'before' && <Badge tone="info">開始前</Badge>}
             <Text textStyle="dense-14" tone="muted">
@@ -175,7 +170,7 @@ export function Dashboard({
                 {phase === 'finished' && now != null && (
                   <Stack gap={1}>
                     <Text textStyle="dense-14" tone="muted">
-                      延長戦 経過時間（60分チャレンジとは）
+                      終了からの経過時間
                     </Text>
                     <Text asChild textStyle="mono-18" tone="strong" weight="bold">
                       <span className="text-4xl tabular-nums">+{formatOvertime(now - END)}</span>
