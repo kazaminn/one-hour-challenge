@@ -105,7 +105,7 @@ export function ResultScreen({ state, onClose }: { state: ChallengeState; onClos
               </a>
             </Button>
             <Button variant="outline" onClick={onClose}>
-              閉じて余韻に浸る
+              EXTENDED ROUND へ →
             </Button>
           </Stack>
         </Stack>

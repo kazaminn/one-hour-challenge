@@ -53,7 +53,14 @@ export type ChallengeState = {
 export function taunt(remainingMs: number, completed: number, total: number): string {
   const min = Math.ceil(remainingMs / 60_000);
   if (remainingMs <= 0) {
-    return completed === total ? '完走！お疲れさまでした 🎉' : 'タイムアップ！でも公開はできた！';
+    const over = Math.floor(-remainingMs / 60_000);
+    if (over < 1) {
+      return completed === total ? '完走！…と見せかけて EXTENDED ROUND 突入' : 'タイムアップ！でも公開はできた！';
+    }
+    if (over < 10) return `延長${over}分目。60分チャレンジの定義が揺らいでいる`;
+    if (over < 30) return `延長${over}分目。もはや別のチャレンジ`;
+    if (over < 60) return `延長${over}分目。誰か止めて`;
+    return `延長${over}分目。これはもう趣味`;
   }
   if (min > 60) return 'まもなく開始。準備はいい？';
   if (min <= 1) return 'ラスト1分！！手を止めるな！！';
