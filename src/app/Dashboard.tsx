@@ -88,6 +88,7 @@ export function Dashboard({ initialState }: { initialState: ChallengeState }) {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:py-12">
       <Stack gap={8}>
+        <div className="grid items-center gap-6 md:grid-cols-[1fr_auto]">
         <Stack gap={3}>
           <Stack direction="row" gap={2} align="center" wrap>
             {phase === 'live' && (
@@ -117,6 +118,8 @@ export function Dashboard({ initialState }: { initialState: ChallengeState }) {
             Next.js + 自作デザインシステム + Turso + Vercel。このページ自体がチャレンジの成果物です。
           </Text>
         </Stack>
+          <QuickCheer count={state.cheerCount} onCheered={setState} />
+        </div>
 
         <div className="grid gap-4 md:grid-cols-3">
           <Card.Root variant="elevated" className="md:col-span-2">
@@ -153,8 +156,8 @@ export function Dashboard({ initialState }: { initialState: ChallengeState }) {
             <Card.Body>
               <Stack gap={6}>
                 <Stat.Root>
-                  <Stat.Label>応援</Stat.Label>
-                  <Stat.ValueText>{state.cheerCount} 🔥</Stat.ValueText>
+                  <Stat.Label>開発ログ</Stat.Label>
+                  <Stat.ValueText>{state.logs.length} 件</Stat.ValueText>
                 </Stat.Root>
                 <Stat.Root>
                   <Stat.Label>マイルストーン</Stat.Label>
@@ -218,6 +221,62 @@ export function Dashboard({ initialState }: { initialState: ChallengeState }) {
       </Stack>
       <Toaster toaster={toaster} />
     </main>
+  );
+}
+
+/** One-tap cheer at the top of the page: no name, no message, just 🔥. */
+function QuickCheer({
+  count,
+  onCheered,
+}: {
+  count: number;
+  onCheered: (state: ChallengeState) => void;
+}) {
+  const [sending, setSending] = useState(false);
+  const [pop, setPop] = useState(0);
+
+  async function cheer() {
+    setSending(true);
+    try {
+      const res = await fetch('/api/cheer', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      if (res.status === 429) {
+        toaster.create({ title: '応援が熱すぎます🔥 少し冷ましてね', type: 'warning' });
+        return;
+      }
+      if (!res.ok) throw new Error(String(res.status));
+      onCheered((await res.json()) as ChallengeState);
+      setPop((n) => n + 1);
+    } catch {
+      toaster.create({ title: '送信に失敗しました', type: 'error' });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Card.Root variant="elevated" className="md:w-56">
+      <Card.Body>
+        <Stack gap={3} align="center">
+          <Text asChild textStyle="dense-14" tone="muted">
+            <span>みんなの応援</span>
+          </Text>
+          <output
+            key={pop}
+            aria-live="polite"
+            className="inline-block font-mono text-4xl font-bold tabular-nums text-(--r-base-fg-strong) motion-safe:animate-[cheer-pop_300ms_ease-out]"
+          >
+            🔥 {count}
+          </output>
+          <Button size="lg" className="w-full" disabled={sending} onClick={() => void cheer()}>
+            ワンタップで応援
+          </Button>
+        </Stack>
+      </Card.Body>
+    </Card.Root>
   );
 }
 
