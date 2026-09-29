@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { UIProvider } from '@kazamitte/kazamitte-ui';
 import { CHALLENGE } from '@/lib/challenge';
+import { themeScript } from './theme';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -10,7 +11,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ja">
+    // data-mode is set by themeScript before hydration.
+    <html lang="ja" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>
         <UIProvider locale="ja-JP">{children}</UIProvider>
       </body>
