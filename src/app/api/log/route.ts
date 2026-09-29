@@ -1,21 +1,14 @@
-import { MILESTONES } from '@/lib/challenge';
 import { addLog, getState } from '@/lib/db';
 import { badRequest, isAdmin, isJson } from '@/lib/guard';
+import { logSchema, parseBody } from '@/lib/schema';
 
 export async function POST(req: Request) {
   if (!isAdmin(req)) return badRequest('unauthorized', 401);
   if (!isJson(req)) return badRequest('content-type must be application/json', 415);
 
-  const data = (await req.json().catch(() => ({}))) as {
-    body?: unknown;
-    milestone?: unknown;
-  };
-  const body = typeof data.body === 'string' ? data.body.trim().slice(0, 280) : '';
-  const milestone = MILESTONES.some((m) => m.value === data.milestone)
-    ? (data.milestone as string)
-    : null;
-  if (!body) return badRequest('body is required');
+  const parsed = await parseBody(req, logSchema);
+  if ('error' in parsed) return parsed.error;
 
-  await addLog(body, milestone);
+  await addLog(parsed.data.body, parsed.data.milestone);
   return Response.json(await getState());
 }

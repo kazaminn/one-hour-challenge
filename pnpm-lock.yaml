@@ -50,6 +50,9 @@ importers:
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
     devDependencies:
       '@types/node':
         specifier: ^24.19.0
@@ -1219,6 +1222,9 @@ packages:
         optional: true
       utf-8-validate:
         optional: true
+
+  zod@4.6.5:
+    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
 snapshots:
 
@@ -2604,3 +2610,5 @@ snapshots:
       d3-timer: 3.0.1
 
   ws@8.22.0: {}
+
+  zod@4.6.5: {}
