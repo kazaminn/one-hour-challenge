@@ -1,6 +1,6 @@
 import 'server-only';
 import { z } from 'zod';
-import { IDEA_STATUSES, MILESTONES } from './challenge';
+import { IDEA_STATUSES, MILESTONES, REACTIONS } from './challenge';
 
 /**
  * User text: strip control characters and bidi overrides (U+202A–202E,
@@ -59,3 +59,5 @@ export async function parseBody<T extends z.ZodType>(
   }
   return { data: result.data };
 }
+
+export const reactSchema = z.object({ emoji: z.enum(REACTIONS) });

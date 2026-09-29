@@ -38,6 +38,10 @@ async function db(): Promise<Client> {
           status TEXT NOT NULL DEFAULT 'open',
           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
         )`,
+        `CREATE TABLE IF NOT EXISTS reactions (
+          emoji TEXT PRIMARY KEY,
+          n INTEGER NOT NULL DEFAULT 0
+        )`,
         `CREATE TABLE IF NOT EXISTS hits (
           key TEXT NOT NULL,
           at INTEGER NOT NULL
@@ -54,7 +58,7 @@ async function db(): Promise<Client> {
 
 export async function getState(): Promise<ChallengeState> {
   const c = await db();
-  const [logs, cheers, count, ideas] = await c.batch(
+  const [logs, cheers, count, ideas, reactions] = await c.batch(
     [
       'SELECT id, body, milestone, created_at FROM logs ORDER BY created_at DESC, id DESC LIMIT 100',
       'SELECT id, name, message, created_at FROM cheers ORDER BY id DESC LIMIT 50',
@@ -62,10 +66,12 @@ export async function getState(): Promise<ChallengeState> {
       // instead of a full scan that Turso bills per row read.
       'SELECT COALESCE(MAX(id), 0) AS n FROM cheers',
       'SELECT id, title, votes, status FROM ideas ORDER BY votes DESC, id ASC LIMIT 30',
+      'SELECT emoji, n FROM reactions',
     ],
     'read',
   );
   return {
+    reactions: Object.fromEntries(reactions.rows.map((r) => [String(r.emoji), Number(r.n)])),
     ideas: ideas.rows.map(
       (r): Idea => ({
         id: Number(r.id),
@@ -145,4 +151,12 @@ export async function countRecentHits(key: string, windowSec: number): Promise<n
     'write',
   );
   return Number(count?.rows[0]?.n ?? 0);
+}
+
+export async function addReaction(emoji: string) {
+  const c = await db();
+  await c.execute({
+    sql: 'INSERT INTO reactions (emoji, n) VALUES (?, 1) ON CONFLICT(emoji) DO UPDATE SET n = n + 1',
+    args: [emoji],
+  });
 }

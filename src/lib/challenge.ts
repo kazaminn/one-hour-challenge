@@ -38,7 +38,11 @@ export type Idea = {
   status: IdeaStatus;
 };
 
+export const REACTIONS = ['👏', '🔥', '😂', '🚀'] as const;
+export type Reaction = (typeof REACTIONS)[number];
+
 export type ChallengeState = {
+  reactions: Partial<Record<Reaction, number>>;
   ideas: Idea[];
   logs: Log[];
   cheers: Cheer[];

@@ -17,6 +17,8 @@ import {
 } from '@kazamitte/kazamitte-ui';
 import { CHALLENGE, MILESTONES, taunt, type ChallengeState } from '@/lib/challenge';
 import { IdeaBox } from './IdeaBox';
+import { Reactions } from './Reactions';
+import { ThemeToggle } from './ThemeToggle';
 import { toaster } from './toaster';
 
 const START = new Date(CHALLENGE.startAt).getTime();
@@ -105,6 +107,7 @@ export function Dashboard({ initialState }: { initialState: ChallengeState }) {
             <Text textStyle="dense-14" tone="muted">
               {formatTime(CHALLENGE.startAt)} – {formatTime(CHALLENGE.endAt)} JST
             </Text>
+            <ThemeToggle />
           </Stack>
           <Heading level={1} size="display-44">
             {CHALLENGE.title}
@@ -118,7 +121,9 @@ export function Dashboard({ initialState }: { initialState: ChallengeState }) {
             Next.js + 自作デザインシステム + Turso + Vercel。このページ自体がチャレンジの成果物です。
           </Text>
         </Stack>
-          <QuickCheer count={state.cheerCount} onCheered={setState} />
+          <QuickCheer count={state.cheerCount} onCheered={setState}>
+            <Reactions reactions={state.reactions} onUpdated={setState} />
+          </QuickCheer>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
@@ -228,9 +233,11 @@ export function Dashboard({ initialState }: { initialState: ChallengeState }) {
 function QuickCheer({
   count,
   onCheered,
+  children,
 }: {
   count: number;
   onCheered: (state: ChallengeState) => void;
+  children?: React.ReactNode;
 }) {
   const [sending, setSending] = useState(false);
   const [pop, setPop] = useState(0);
@@ -274,6 +281,7 @@ function QuickCheer({
           <Button size="lg" className="w-full" disabled={sending} onClick={() => void cheer()}>
             ワンタップで応援
           </Button>
+          {children}
         </Stack>
       </Card.Body>
     </Card.Root>
