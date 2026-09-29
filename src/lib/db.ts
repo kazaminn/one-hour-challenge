@@ -42,6 +42,11 @@ async function db(): Promise<Client> {
           emoji TEXT PRIMARY KEY,
           n INTEGER NOT NULL DEFAULT 0
         )`,
+        // Counters that don't need a row per event (e.g. one-tap cheers).
+        `CREATE TABLE IF NOT EXISTS stats (
+          key TEXT PRIMARY KEY,
+          n INTEGER NOT NULL DEFAULT 0
+        )`,
         `CREATE TABLE IF NOT EXISTS hits (
           key TEXT NOT NULL,
           at INTEGER NOT NULL
@@ -62,9 +67,10 @@ export async function getState(): Promise<ChallengeState> {
     [
       'SELECT id, body, milestone, created_at FROM logs ORDER BY created_at DESC, id DESC LIMIT 100',
       'SELECT id, name, message, created_at FROM cheers ORDER BY id DESC LIMIT 50',
-      // Cheers are never deleted, so the max rowid is the count — a PK lookup
-      // instead of a full scan that Turso bills per row read.
-      'SELECT COALESCE(MAX(id), 0) AS n FROM cheers',
+      // One-tap cheers live in a counter; only cheers with a message get a row,
+      // so this COUNT stays small.
+      `SELECT (SELECT COUNT(*) FROM cheers)
+            + COALESCE((SELECT n FROM stats WHERE key = 'quick_cheers'), 0) AS n`,
       'SELECT id, title, votes, status FROM ideas ORDER BY votes DESC, id ASC LIMIT 30',
       'SELECT emoji, n FROM reactions',
     ],
@@ -108,15 +114,23 @@ export async function addLog(body: string, milestone: string | null) {
   });
 }
 
-export async function addCheer(name: string, message: string, times = 1) {
+/** Returns the new cheer's id so the poster can recognise their own message. */
+export async function addCheer(name: string, message: string): Promise<number> {
   const c = await db();
-  await c.batch(
-    Array.from({ length: times }, () => ({
-      sql: 'INSERT INTO cheers (name, message) VALUES (?, ?)',
-      args: [name, message],
-    })),
-    'write',
-  );
+  const res = await c.execute({
+    sql: 'INSERT INTO cheers (name, message) VALUES (?, ?)',
+    args: [name, message],
+  });
+  return Number(res.lastInsertRowid);
+}
+
+/** One-tap (possibly mashed) cheers: bump a counter instead of writing rows. */
+export async function addQuickCheers(times: number) {
+  const c = await db();
+  await c.execute({
+    sql: "INSERT INTO stats (key, n) VALUES ('quick_cheers', ?) ON CONFLICT(key) DO UPDATE SET n = n + excluded.n",
+    args: [times],
+  });
 }
 
 export async function addIdea(title: string) {
