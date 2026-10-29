@@ -185,6 +185,11 @@ export type GameState = {
   buffs: Buff[];
   /** Golden gyoza ever clicked. */
   goldenClicks: number;
+  /** Clicks on the plate, and the gyoza they baked. */
+  clicks: number;
+  handBaked: number;
+  /** When this game began, in ms since the epoch. */
+  startedAt: number;
   /** When this state was last advanced, in ms since the epoch. */
   at: number;
 };
@@ -197,6 +202,9 @@ export function initialState(now: number): GameState {
     upgrades: [],
     buffs: [],
     goldenClicks: 0,
+    clicks: 0,
+    handBaked: 0,
+    startedAt: now,
     at: now,
   };
 }
@@ -553,7 +561,8 @@ export function perClick(state: GameState): number {
 }
 
 export function click(state: GameState): GameState {
-  return add(state, perClick(state));
+  const n = perClick(state);
+  return { ...add(state, n), clicks: state.clicks + 1, handBaked: state.handBaked + n };
 }
 
 /** What the next `count` of a building cost together, each priced as it's bought. */
@@ -597,6 +606,27 @@ export function visibility(state: GameState, index: number): 'shown' | 'teaser' 
   return unlocked(index - 1) ? 'teaser' : 'hidden';
 }
 
+const EXPORT_PREFIX = 'GYOZA1:';
+
+/** The save as one line of text to copy elsewhere. */
+export function exportSave(state: GameState): string {
+  return EXPORT_PREFIX + btoa(JSON.stringify(state));
+}
+
+/** Reads text from `exportSave`, or returns null when it isn't one. */
+export function importSave(text: string, now: number): GameState | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith(EXPORT_PREFIX)) return null;
+  try {
+    const json = atob(trimmed.slice(EXPORT_PREFIX.length));
+    const parsed: unknown = JSON.parse(json);
+    if (typeof parsed !== 'object' || parsed === null || !('owned' in parsed)) return null;
+    return load(json, now);
+  } catch {
+    return null;
+  }
+}
+
 /** Restores a saved game, falling back to a fresh one for anything malformed. */
 export function load(json: string | null, now: number): GameState {
   const fresh = initialState(now);
@@ -622,6 +652,10 @@ export function load(json: string | null, now: number): GameState {
           )
         : [],
       goldenClicks: Math.floor(num(saved.goldenClicks, 0)),
+      clicks: Math.floor(num(saved.clicks, 0)),
+      handBaked: num(saved.handBaked, 0),
+      // Saves from before this field existed count from their last save.
+      startedAt: Math.min(num(saved.startedAt, num(saved.at, now)), now),
       at: Math.min(num(saved.at, now), now),
     };
   } catch {

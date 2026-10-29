@@ -14,6 +14,8 @@ import {
   costOf,
   currentPerSecond,
   earnedAchievements,
+  exportSave,
+  importSave,
   formatJa,
   GOLDEN_STAY_MS,
   goldenClick,
@@ -44,11 +46,12 @@ const formatRate = (n: number) =>
 type Amount = number | 'max';
 const AMOUNT_PRESETS: Amount[] = [1, 10, 50, 100, 'max'];
 
-type Tab = 'shop' | 'upgrades' | 'achievements';
+type Tab = 'shop' | 'upgrades' | 'achievements' | 'more';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'shop', label: 'お店' },
   { id: 'upgrades', label: '強化' },
   { id: 'achievements', label: '実績' },
+  { id: 'more', label: 'その他' },
 ];
 
 type Floater = { id: number; x: number; y: number; n: number };
@@ -188,6 +191,13 @@ export function GyozaClicker() {
     ]);
   };
 
+  /** Swaps in a whole new game (import or reset) without toasting its achievements. */
+  const onReplace = (next: GameState) => {
+    earnedRef.current = earnedAchievements(next);
+    setState(next);
+    save(next);
+  };
+
   const onBuyUpgrade = (id: string) => {
     setState((s) => {
       const next = buyUpgrade(tick(s, Date.now()), id);
@@ -267,7 +277,7 @@ export function GyozaClicker() {
         </section>
 
         <section className="flex flex-col overflow-hidden rounded-2xl bg-amber-50/95 text-stone-900 shadow-xl md:sticky md:top-6 md:h-[calc(100dvh-3rem)]">
-          <div role="tablist" aria-label="お店のメニュー" className="flex shrink-0 gap-1 border-b-2 border-amber-800/20 px-3 pt-3">
+          <div role="tablist" aria-label="お店のメニュー" className="flex shrink-0 gap-1 overflow-x-auto border-b-2 border-amber-800/20 px-3 pt-3">
             {TABS.map((t) => (
               <button
                 key={t.id}
@@ -277,9 +287,9 @@ export function GyozaClicker() {
                 aria-selected={tab === t.id}
                 aria-controls="gyoza-tabpanel"
                 onClick={() => setTab(t.id)}
-                className="relative flex cursor-pointer items-center gap-1.5 rounded-t-xl border-2 border-b-0 border-amber-800/20 bg-amber-100 px-4 py-2 font-bold text-amber-900 hover:bg-amber-200 aria-selected:border-red-700 aria-selected:bg-red-600 aria-selected:text-white"
+                className="relative flex shrink-0 cursor-pointer items-center gap-1.5 rounded-t-xl border-2 border-b-0 border-amber-800/20 bg-amber-100 px-2 py-2 font-bold sm:px-3 text-amber-900 hover:bg-amber-200 aria-selected:border-red-700 aria-selected:bg-red-600 aria-selected:text-white"
               >
-                {t.id === 'shop' && <img src="/gyoza/gyoza.webp" alt="" className="size-6" />}
+                {t.id === 'shop' && <img src="/gyoza/gyoza.webp" alt="" className="hidden size-6 sm:block" />}
                 {t.label}
                 {t.id === 'upgrades' && affordableUpgrades > 0 && (
                   <span className="rounded-full bg-amber-500 px-1.5 text-xs text-white tabular-nums">
@@ -458,6 +468,8 @@ export function GyozaClicker() {
                 )}
               </ul>
             )}
+
+            {tab === 'more' && <MorePanel state={state} earnedCount={earned.size} onReplace={onReplace} />}
           </div>
         </section>
       </div>
@@ -500,4 +512,151 @@ export function GyozaClicker() {
 
 function upgradeIcon(u: Upgrade): string {
   return `/gyoza/${u.icon}.webp`;
+}
+
+function formatDuration(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  if (days > 0) return `${days}日${hours}時間`;
+  if (hours > 0) return `${hours}時間${minutes % 60}分`;
+  return `${minutes}分`;
+}
+
+function MorePanel({
+  state,
+  earnedCount,
+  onReplace,
+}: {
+  state: GameState;
+  earnedCount: number;
+  onReplace: (next: GameState) => void;
+}) {
+  const [exported, setExported] = useState('');
+  const [importText, setImportText] = useState('');
+  const [message, setMessage] = useState('');
+
+  const stats: [string, string][] = [
+    ['手持ちの餃子', `${format(state.gyoza)}個`],
+    ['これまでに焼いた餃子', `${format(state.baked)}個`],
+    ['手で焼いた餃子', `${format(state.handBaked)}個`],
+    ['お皿をクリックした回数', `${format(state.clicks)}回`],
+    ['毎秒の生産', `${formatRate(currentPerSecond(state, state.at))}個`],
+    ['1クリックで焼ける数', `${format(perClick(state))}個`],
+    ['設備の合計', `${format(BUILDINGS.reduce((sum, b) => sum + state.owned[b.id], 0))}`],
+    ['買った強化', `${state.upgrades.length}個`],
+    ['実績', `${earnedCount} / ${ACHIEVEMENTS.length}`],
+    ['金の餃子をつかまえた回数', `${state.goldenClicks}回`],
+    ['遊びはじめてから', formatDuration(state.at - state.startedAt)],
+  ];
+
+  const onExport = async () => {
+    const text = exportSave(state);
+    setExported(text);
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage('セーブをコピーしました。メモ帳などに貼って保存してください。');
+    } catch {
+      setMessage('下の欄のテキストを選んでコピーしてください。');
+    }
+  };
+
+  const onImport = () => {
+    const next = importSave(importText, Date.now());
+    if (!next) {
+      setMessage('読み込めませんでした。「GYOZA1:」で始まるテキストを貼ってください。');
+      return;
+    }
+    if (!window.confirm('今の餃子屋を、貼ったセーブで上書きします。よろしいですか？')) return;
+    onReplace(next);
+    setImportText('');
+    setMessage('セーブを読み込みました。');
+  };
+
+  const onReset = () => {
+    if (!window.confirm('最初からやり直します。餃子も設備も強化も実績もすべて消えます。')) return;
+    if (!window.confirm('本当にリセットしますか？ 元に戻せません。')) return;
+    onReplace(initialState(Date.now()));
+    setExported('');
+    setMessage('リセットしました。また1個目から焼きましょう！');
+  };
+
+  return (
+    <div className="flex flex-col gap-6 text-sm">
+      <section>
+        <h3 className="mb-2 font-bold">統計</h3>
+        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 rounded-xl bg-white p-3 shadow-sm">
+          {stats.map(([label, value]) => (
+            <div key={label} className="contents">
+              <dt className="text-stone-600">{label}</dt>
+              <dd className="text-right font-bold tabular-nums">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h3 className="font-bold">セーブ</h3>
+        <p className="text-stone-600">
+          セーブはこのブラウザの中だけにあります。別の端末で続けるときや、念のための控えに使ってください。
+        </p>
+        <div>
+          <button
+            type="button"
+            onClick={onExport}
+            className="cursor-pointer rounded-lg bg-amber-600 px-3 py-2 font-bold text-white hover:bg-amber-700"
+          >
+            書き出してコピー
+          </button>
+        </div>
+        {exported && (
+          <textarea
+            readOnly
+            value={exported}
+            rows={3}
+            aria-label="書き出したセーブ"
+            onFocus={(e) => e.currentTarget.select()}
+            className="w-full rounded-md border border-amber-700/40 bg-white p-2 font-mono text-xs break-all"
+          />
+        )}
+        <label className="mt-2 flex flex-col gap-1">
+          <span className="font-bold">読み込み</span>
+          <textarea
+            value={importText}
+            rows={3}
+            placeholder="GYOZA1:..."
+            onChange={(e) => setImportText(e.target.value)}
+            className="w-full rounded-md border border-amber-700/40 bg-white p-2 font-mono text-xs"
+          />
+        </label>
+        <div>
+          <button
+            type="button"
+            disabled={!importText.trim()}
+            onClick={onImport}
+            className="cursor-pointer rounded-lg bg-amber-600 px-3 py-2 font-bold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500"
+          >
+            読み込む
+          </button>
+        </div>
+        <p role="status" className="min-h-5 text-amber-800">
+          {message}
+        </p>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h3 className="font-bold">リセット</h3>
+        <p className="text-stone-600">すべて消して最初からやり直します。先にセーブを書き出しておくと安心です。</p>
+        <div>
+          <button
+            type="button"
+            onClick={onReset}
+            className="cursor-pointer rounded-lg border-2 border-red-700 px-3 py-2 font-bold text-red-700 hover:bg-red-50"
+          >
+            リセットする
+          </button>
+        </div>
+      </section>
+    </div>
+  );
 }
