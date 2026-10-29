@@ -696,6 +696,14 @@ function goldenWeight(state: GameState | null, effect: GoldenEffect): number {
   return effect.kind === 'clickFrenzy' && state && hasSkill(state, 'zukan') ? effect.weight * 3 : effect.weight;
 }
 
+/** What `effect` does in this shop, with the skills and upgrades that change it. */
+export function goldenDescription(state: GameState, effect: GoldenEffect): string {
+  const seconds = Math.round(buffSeconds(state, effect));
+  if (effect.kind === 'frenzy') return `${seconds}秒間、毎秒の生産が${hasSkill(state, 'daifever') ? 15 : 7}倍`;
+  if (effect.kind === 'clickFrenzy') return `${seconds}秒間、クリックが777倍`;
+  return effect.description;
+}
+
 /** Picks an effect from `roll` in [0, 1), so the game stays free of randomness. */
 export function pickGoldenEffect(roll: number, state: GameState | null = null): GoldenEffect {
   const total = GOLDEN_EFFECTS.reduce((sum, e) => sum + goldenWeight(state, e), 0);
@@ -869,7 +877,7 @@ export function load(json: string | null, now: number): GameState {
       recipes: Math.floor(num(saved.recipes, 0)),
       lifetimeBaked: num(saved.lifetimeBaked, 0),
       keptAchievements: Array.isArray(saved.keptAchievements)
-        ? saved.keptAchievements.filter((id) => typeof id === 'string')
+        ? [...new Set(saved.keptAchievements.filter((id) => ACHIEVEMENTS.some((a) => a.id === id)))]
         : [],
       skills: Array.isArray(saved.skills)
         ? [...new Set(saved.skills.filter((id) => typeof id === 'string' && SKILL_BY_ID.has(id)))]

@@ -19,6 +19,7 @@ import {
   formatJa,
   GOLDEN_STAY_MS,
   goldenClick,
+  goldenDescription,
   goldenWaitMs,
   initialState,
   learnSkill,
@@ -197,15 +198,30 @@ export function GyozaClicker() {
   useEffect(() => {
     if (!loaded) return;
     const frame = setInterval(() => setState((s) => tick(s, Date.now())), 100);
-    const autosave = setInterval(() => save(stateRef.current), SAVE_EVERY_MS);
+    // Only the tab in front autosaves, so a tab left open behind it doesn't
+    // keep writing back an older game (see onStorage below).
+    const autosave = setInterval(() => {
+      if (document.visibilityState === 'visible') save(stateRef.current);
+    }, SAVE_EVERY_MS);
     const saveNow = () => save(tick(stateRef.current, Date.now()));
     document.addEventListener('visibilitychange', saveNow);
     window.addEventListener('pagehide', saveNow);
+    // Another tab saved: take its game, or this tab's next autosave would
+    // undo what happened there (a のれん分け, an import, a reset).
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY || e.newValue === null) return;
+      const next = tick(load(e.newValue, Date.now()), Date.now());
+      earnedRef.current = earnedAchievements(next);
+      stateRef.current = next;
+      setState(next);
+    };
+    window.addEventListener('storage', onStorage);
     return () => {
       clearInterval(frame);
       clearInterval(autosave);
       document.removeEventListener('visibilitychange', saveNow);
       window.removeEventListener('pagehide', saveNow);
+      window.removeEventListener('storage', onStorage);
     };
   }, [loaded]);
 
@@ -242,7 +258,7 @@ export function GyozaClicker() {
       {
         image: `/gyoza/${effect.image}.webp`,
         title: `${effect.name}！`,
-        description: gained > 0 ? `餃子を${format(gained)}個もらった` : effect.description,
+        description: gained > 0 ? `餃子を${format(gained)}個もらった` : goldenDescription(next, effect),
       },
     ]);
   };
@@ -334,7 +350,7 @@ export function GyozaClicker() {
               {buffs.map((b) => (
                 <li
                   key={b.effect.kind}
-                  title={b.effect.description}
+                  title={goldenDescription(state, b.effect)}
                   className="flex items-center gap-1 rounded-full bg-amber-500 py-1 pr-3 pl-1.5 text-sm font-bold text-white shadow tabular-nums"
                 >
                   <img src={`/gyoza/${b.effect.image}.webp`} alt="" className="size-6" />
@@ -892,15 +908,18 @@ function Modal({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // The game re-renders ten times a second with a new `onClose` each time, so
+  // read it through a ref and focus the dialog only once, when it opens.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     ref.current?.focus();
-    if (!onClose) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, []);
   return (
     <div
       className="fixed inset-0 z-20 overflow-y-auto bg-stone-950/60"
