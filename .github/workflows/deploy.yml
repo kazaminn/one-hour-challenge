@@ -1,0 +1,70 @@
+name: Build & Deploy
+
+# main への push と、Actions 画面からの手動実行（Run workflow）で動く。
+# build が成功したときだけ deploy する。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 同時に2本走らせない。後から来た方は前の完了を待つ。
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      # 本番の環境変数（Turso の接続情報など）とプロジェクト設定を取ってくる
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vercel-output
+          path: .vercel/output
+          include-hidden-files: true
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vercel-output
+          path: .vercel/output
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Deploy
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$url" >> "$GITHUB_OUTPUT"
