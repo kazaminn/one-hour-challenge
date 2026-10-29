@@ -190,6 +190,11 @@ export type GameState = {
   handBaked: number;
   /** When this game began, in ms since the epoch. */
   startedAt: number;
+  /** のれん分け (prestige): times done, recipes held, gyoza baked in earlier shops, achievements kept. */
+  rebirths: number;
+  recipes: number;
+  lifetimeBaked: number;
+  keptAchievements: string[];
   /** When this state was last advanced, in ms since the epoch. */
   at: number;
 };
@@ -205,6 +210,10 @@ export function initialState(now: number): GameState {
     clicks: 0,
     handBaked: 0,
     startedAt: now,
+    rebirths: 0,
+    recipes: 0,
+    lifetimeBaked: 0,
+    keptAchievements: [],
     at: now,
   };
 }
@@ -408,7 +417,54 @@ export function unitPerSecond(state: GameState, building: Building): number {
 }
 
 export function perSecond(state: GameState): number {
-  return BUILDINGS.reduce((sum, b) => sum + unitPerSecond(state, b) * state.owned[b.id], 0);
+  return (
+    BUILDINGS.reduce((sum, b) => sum + unitPerSecond(state, b) * state.owned[b.id], 0) *
+    recipeBoost(state)
+  );
+}
+
+/** Each 秘伝のレシピ adds 1% to production and clicks, for good. */
+export function recipeBoost(state: GameState): number {
+  return 1 + state.recipes * 0.01;
+}
+
+/** Gyoza per recipe grows as a cube, so each next one takes more baking. */
+const RECIPE_UNIT = 1e10;
+
+/** Recipes earned over every shop so far, counting this one. */
+function recipesEarned(state: GameState): number {
+  return Math.floor(Math.cbrt((state.lifetimeBaked + state.baked) / RECIPE_UNIT));
+}
+
+/** Recipes a のれん分け now would add. */
+export function pendingRecipes(state: GameState): number {
+  return Math.max(0, recipesEarned(state) - state.recipes);
+}
+
+/** Total gyoza (over all shops) needed for the next recipe. */
+export function nextRecipeAt(state: GameState): number {
+  return (recipesEarned(state) + 1) ** 3 * RECIPE_UNIT;
+}
+
+/**
+ * のれん分け: hand the shop to an apprentice and open a new one. Gyoza,
+ * buildings, upgrades and buffs start over; recipes, achievements and
+ * lifetime stats carry on. Returns null when it would earn nothing.
+ */
+export function rebirth(state: GameState, now: number): GameState | null {
+  if (pendingRecipes(state) < 1) return null;
+  const fresh = initialState(now);
+  return {
+    ...fresh,
+    goldenClicks: state.goldenClicks,
+    clicks: state.clicks,
+    handBaked: state.handBaked,
+    startedAt: state.startedAt,
+    rebirths: state.rebirths + 1,
+    recipes: recipesEarned(state),
+    lifetimeBaked: state.lifetimeBaked + state.baked,
+    keptAchievements: [...earnedAchievements(state)],
+  };
 }
 
 function add(state: GameState, n: number): GameState {
@@ -557,7 +613,7 @@ export function perClick(state: GameState): number {
   const share = ups.reduce((sum, u) => sum + (u.kind === 'clickRate' ? u.share : 0), 0);
   const base = 1 + state.owned.tezukuri * tezukuriClickShare(state);
   const clickBoost = buffActive(state, 'clickFrenzy', state.at) ? 777 : 1;
-  return (base * 2 ** doubles + currentPerSecond(state, state.at) * share) * clickBoost;
+  return (base * 2 ** doubles * recipeBoost(state) + currentPerSecond(state, state.at) * share) * clickBoost;
 }
 
 export function click(state: GameState): GameState {
@@ -656,6 +712,12 @@ export function load(json: string | null, now: number): GameState {
       handBaked: num(saved.handBaked, 0),
       // Saves from before this field existed count from their last save.
       startedAt: Math.min(num(saved.startedAt, num(saved.at, now)), now),
+      rebirths: Math.floor(num(saved.rebirths, 0)),
+      recipes: Math.floor(num(saved.recipes, 0)),
+      lifetimeBaked: num(saved.lifetimeBaked, 0),
+      keptAchievements: Array.isArray(saved.keptAchievements)
+        ? saved.keptAchievements.filter((id) => typeof id === 'string')
+        : [],
       at: Math.min(num(saved.at, now), now),
     };
   } catch {
@@ -728,11 +790,17 @@ export const ACHIEVEMENTS: readonly {
   { id: 'upgrade1', name: 'ひと工夫', description: '強化を1つ買った', icon: 'upgrade-menbou', earned: (s) => s.upgrades.length >= 1 },
   { id: 'upgrade10', name: '研究熱心', description: '強化を10個買った', icon: 'upgrade-aichip', earned: (s) => s.upgrades.length >= 10 },
   { id: 'upgrade25', name: '餃子研究家', description: '強化を25個買った', icon: 'building-kenkyujo', earned: (s) => s.upgrades.length >= 25 },
+  { id: 'rebirth1', name: 'のれん分け', description: 'はじめてのれん分けをした', icon: 'bonus-crown', earned: (s) => s.rebirths >= 1 },
+  { id: 'rebirth10', name: '餃子の家元', description: 'のれん分けを10回した', icon: 'ach-kami', earned: (s) => s.rebirths >= 10 },
   { id: 'golden1', name: '金色の出会い', description: '金の餃子を1回つかまえた', icon: 'golden', earned: (s) => s.goldenClicks >= 1 },
   { id: 'golden7', name: 'ラッキーセブン', description: '金の餃子を7回つかまえた', icon: 'bonus-clover', earned: (s) => s.goldenClicks >= 7 },
   { id: 'golden77', name: '金の餃子ハンター', description: '金の餃子を77回つかまえた', icon: 'bonus-crown', earned: (s) => s.goldenClicks >= 77 },
 ];
 
+/** Achievements earned in this shop, plus the ones kept through のれん分け. */
 export function earnedAchievements(state: GameState): Set<string> {
-  return new Set(ACHIEVEMENTS.filter((a) => a.earned(state)).map((a) => a.id));
+  return new Set([
+    ...state.keptAchievements,
+    ...ACHIEVEMENTS.filter((a) => a.earned(state)).map((a) => a.id),
+  ]);
 }

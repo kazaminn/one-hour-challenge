@@ -23,8 +23,11 @@ import {
   initialState,
   load,
   nextBonusStep,
+  nextRecipeAt,
+  pendingRecipes,
   perClick,
   pickGoldenEffect,
+  rebirth,
   tezukuriClickShare,
   tick,
   unitPerSecond,
@@ -234,6 +237,9 @@ export function GyozaClicker() {
             <p className="text-sm text-stone-600">
               毎秒 {formatRate(rate)} 個・1クリック {format(perClick(state))} 個
             </p>
+            {state.recipes > 0 && (
+              <p className="text-xs text-amber-800">秘伝のレシピ {format(state.recipes)}個（+{format(state.recipes)}%）</p>
+            )}
           </div>
           {buffs.length > 0 && (
             <ul className="flex flex-wrap justify-center gap-2">
@@ -548,6 +554,8 @@ function MorePanel({
     ['実績', `${earnedCount} / ${ACHIEVEMENTS.length}`],
     ['金の餃子をつかまえた回数', `${state.goldenClicks}回`],
     ['遊びはじめてから', formatDuration(state.at - state.startedAt)],
+    ['のれん分けした回数', `${state.rebirths}回`],
+    ['すべての店で焼いた餃子', `${format(state.lifetimeBaked + state.baked)}個`],
   ];
 
   const onExport = async () => {
@@ -573,6 +581,21 @@ function MorePanel({
     setMessage('セーブを読み込みました。');
   };
 
+  const pending = pendingRecipes(state);
+
+  const onRebirth = () => {
+    if (
+      !window.confirm(
+        `のれん分けして新しい店を始めます。餃子・設備・強化は最初からになり、秘伝のレシピが${pending}個増えます。`,
+      )
+    )
+      return;
+    const next = rebirth(state, Date.now());
+    if (!next) return;
+    onReplace(next);
+    setMessage('');
+  };
+
   const onReset = () => {
     if (!window.confirm('最初からやり直します。餃子も設備も強化も実績もすべて消えます。')) return;
     if (!window.confirm('本当にリセットしますか？ 元に戻せません。')) return;
@@ -593,6 +616,38 @@ function MorePanel({
             </div>
           ))}
         </dl>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h3 className="font-bold">のれん分け</h3>
+        <p className="text-stone-600">
+          お店を弟子にゆずって、新しいお店を一から始めます。それまでに焼いた餃子の数に応じて「秘伝のレシピ」がもらえ、1つにつき生産とクリックがずっと+1%されます。実績もそのまま残ります。
+        </p>
+        <div className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm">
+          <img src="/gyoza/bonus-crown.webp" alt="" className="size-12 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p>
+              秘伝のレシピ <span className="font-bold tabular-nums">{format(state.recipes)}個</span>
+              <span className="ml-1 text-stone-600">（+{format(state.recipes)}%）</span>
+            </p>
+            <p>
+              のれん分けでもらえる <span className="font-bold text-amber-700 tabular-nums">+{format(pending)}個</span>
+            </p>
+            <p className="text-xs text-stone-600">
+              次のレシピまで あと{format(nextRecipeAt(state) - state.lifetimeBaked - state.baked)}個
+            </p>
+          </div>
+        </div>
+        <div>
+          <button
+            type="button"
+            disabled={pending < 1}
+            onClick={onRebirth}
+            className="cursor-pointer rounded-lg bg-red-600 px-3 py-2 font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500"
+          >
+            のれん分けする
+          </button>
+        </div>
       </section>
 
       <section className="flex flex-col gap-2">
