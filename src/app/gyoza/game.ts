@@ -183,8 +183,9 @@ export type GameState = {
   upgrades: string[];
   /** Golden gyoza effects still running. */
   buffs: Buff[];
-  /** Golden gyoza ever clicked. */
+  /** Golden gyoza ever clicked, and which effects have come up. */
   goldenClicks: number;
+  goldenSeen: string[];
   /** Clicks on the plate, and the gyoza they baked. */
   clicks: number;
   handBaked: number;
@@ -207,6 +208,7 @@ export function initialState(now: number): GameState {
     upgrades: [],
     buffs: [],
     goldenClicks: 0,
+    goldenSeen: [],
     clicks: 0,
     handBaked: 0,
     startedAt: now,
@@ -269,6 +271,16 @@ const TIER_ICON: Partial<Record<BuildingId, string>> = {
   kikai: 'upgrade-aichip',
   kojo: 'upgrade-aichip',
   kenkyujo: 'upgrade-aichip',
+  senmonten: 'upgrade-koukoku',
+  idou: 'upgrade-delivery',
+  central: 'upgrade-reitou',
+  franchise: 'upgrade-koukoku',
+  themepark: 'upgrade-seiro',
+  rengo: 'upgrade-chizu',
+  eisei: 'upgrade-rocket',
+  getsumen: 'upgrade-rocket',
+  kasei: 'upgrade-rocket',
+  ginga: 'upgrade-rocket',
 };
 
 /** Owned counts that unlock each tier of a building's upgrades, and the price as a multiple of its base cost. */
@@ -321,11 +333,29 @@ export const UPGRADES: readonly Upgrade[] = [
   {
     id: 'jitan',
     kind: 'global',
-    name: '時短マシン',
+    name: '時短タイマー',
     description: 'すべての設備の生産が2倍',
     cost: 1e10,
     icon: 'upgrade-jitan',
     unlocked: (s) => s.baked >= 1e9,
+  },
+  {
+    id: 'komugi',
+    kind: 'global',
+    name: '特選小麦粉',
+    description: 'すべての設備の生産が2倍',
+    cost: 1e14,
+    icon: 'upgrade-komugi',
+    unlocked: (s) => s.baked >= 1e13,
+  },
+  {
+    id: 'oukan',
+    kind: 'global',
+    name: '餃子王の冠',
+    description: 'すべての設備の生産が2倍',
+    cost: 1e19,
+    icon: 'upgrade-oukan',
+    unlocked: (s) => s.baked >= 1e18,
   },
   {
     id: 'ninniku',
@@ -457,6 +487,7 @@ export function rebirth(state: GameState, now: number): GameState | null {
   return {
     ...fresh,
     goldenClicks: state.goldenClicks,
+    goldenSeen: state.goldenSeen,
     clicks: state.clicks,
     handBaked: state.handBaked,
     startedAt: state.startedAt,
@@ -573,7 +604,11 @@ export function goldenClick(
   effect: GoldenEffect,
   now: number,
 ): { state: GameState; gained: number } {
-  const counted = { ...tick(state, now), goldenClicks: state.goldenClicks + 1 };
+  const counted = {
+    ...tick(state, now),
+    goldenClicks: state.goldenClicks + 1,
+    goldenSeen: state.goldenSeen.includes(effect.kind) ? state.goldenSeen : [...state.goldenSeen, effect.kind],
+  };
   if (effect.kind === 'frenzy' || effect.kind === 'clickFrenzy') {
     // A second one of the same kind restarts the timer instead of stacking.
     const buffs = counted.buffs.filter((b) => b.kind !== effect.kind);
@@ -708,6 +743,9 @@ export function load(json: string | null, now: number): GameState {
           )
         : [],
       goldenClicks: Math.floor(num(saved.goldenClicks, 0)),
+      goldenSeen: Array.isArray(saved.goldenSeen)
+        ? saved.goldenSeen.filter((k) => GOLDEN_EFFECTS.some((e) => e.kind === k))
+        : [],
       clicks: Math.floor(num(saved.clicks, 0)),
       handBaked: num(saved.handBaked, 0),
       // Saves from before this field existed count from their last save.
@@ -754,8 +792,9 @@ export function formatJa(n: number): string {
 }
 
 /**
- * Achievements are read straight off the state: `baked` and `owned` only ever
- * grow, so once earned an achievement stays earned without being saved.
+ * Achievements are read straight off the state. Most of what they read only
+ * ever grows, but not all (すっからかん, or anything after のれん分け), so
+ * earned ones are also written into `keptAchievements` by `recordAchievements`.
  */
 export const ACHIEVEMENTS: readonly {
   id: string;
@@ -763,6 +802,8 @@ export const ACHIEVEMENTS: readonly {
   description: string;
   /** Image under /gyoza/. */
   icon: string;
+  /** A secret: its hint stays hidden until earned. */
+  hidden?: boolean;
   earned: (state: GameState) => boolean;
 }[] = [
   { id: 'baked1', name: 'はじめの一個', description: '餃子を1個焼いた', icon: 'ach-baked1', earned: (s) => s.baked >= 1 },
@@ -772,32 +813,58 @@ export const ACHIEVEMENTS: readonly {
   { id: 'baked100k', name: '十万個の山', description: '餃子を10万個焼いた', icon: 'ach-baked100k', earned: (s) => s.baked >= 1e5 },
   { id: 'baked1m', name: '餃子長者', description: '餃子を100万個焼いた', icon: 'ach-baked1m', earned: (s) => s.baked >= 1e6 },
   { id: 'baked100m', name: '餃子の星', description: '餃子を1億個焼いた', icon: 'ach-baked1m', earned: (s) => s.baked >= 1e8 },
-  { id: 'baked1t', name: '餃子の神', description: '餃子を1兆個焼いた', icon: 'ach-kami', earned: (s) => s.baked >= 1e12 },
-  { id: 'baked1kei', name: '餃子の創造主', description: '餃子を1京個焼いた', icon: 'ach-kami', earned: (s) => s.baked >= 1e16 },
-  { id: 'shokunin1', name: 'いらっしゃい、おじさん', description: '餃子職人のおじさんを雇った', icon: 'ach-shokunin', earned: (s) => s.owned.shokunin >= 1 },
-  { id: 'shokunin10', name: '職人チーム', description: '餃子職人のおじさんを10人雇った', icon: 'ach-shokunin', earned: (s) => s.owned.shokunin >= 10 },
-  { id: 'kikai1', name: '機械化', description: '餃子の自動製造機を導入した', icon: 'ach-kojo', earned: (s) => s.owned.kikai >= 1 },
-  { id: 'senmonten1', name: '開店！', description: '町の餃子専門店を開いた', icon: 'ach-mise', earned: (s) => s.owned.senmonten >= 1 },
-  { id: 'franchise1', name: '全国進出', description: '餃子フランチャイズを始めた', icon: 'ach-mise', earned: (s) => s.owned.franchise >= 1 },
-  { id: 'kojo1', name: '工場をつくる', description: '全自動餃子工場を建てた', icon: 'ach-kojo', earned: (s) => s.owned.kojo >= 1 },
-  { id: 'rengo1', name: '世界に広げる', description: '世界餃子連合を結成した', icon: 'ach-sekai', earned: (s) => s.owned.rengo >= 1 },
-  { id: 'eisei1', name: '宇宙進出', description: '餃子人工衛星を打ち上げた', icon: 'ach-uchu', earned: (s) => s.owned.eisei >= 1 },
-  { id: 'ginga1', name: '銀河の覇者', description: '銀河餃子帝国を築いた', icon: 'ach-uchu', earned: (s) => s.owned.ginga >= 1 },
-  { id: 'jiku1', name: '時空を超えて', description: '時空餃子転送門を開いた', icon: 'ach-kami', earned: (s) => s.owned.jiku >= 1 },
+  { id: 'baked1b', name: '十億の餃子', description: '餃子を10億個焼いた', icon: 'ach-baked1b', earned: (s) => s.baked >= 1e9 },
+  { id: 'baked1t', name: '一兆個の夢', description: '餃子を1兆個焼いた', icon: 'ach-baked1t', earned: (s) => s.baked >= 1e12 },
+  { id: 'baked1kei', name: '餃子の王になった', description: '餃子を1京個焼いた', icon: 'ach-ou', earned: (s) => s.baked >= 1e16 },
+  { id: 'baked1gai', name: '餃子の神に会った', description: '餃子を1垓個焼いた', icon: 'ach-kamisama', earned: (s) => s.baked >= 1e20 },
   { id: 'rate10', name: '自動で焼ける', description: '毎秒10個焼けるようになった', icon: 'ach-baked100', earned: (s) => perSecond(s) >= 10 },
   { id: 'rate1k', name: '餃子の滝', description: '毎秒1,000個焼けるようになった', icon: 'ach-baked10k', earned: (s) => perSecond(s) >= 1_000 },
   { id: 'rate1m', name: '餃子の大河', description: '毎秒100万個焼けるようになった', icon: 'ach-baked1m', earned: (s) => perSecond(s) >= 1e6 },
+  { id: 'rate1b', name: '餃子の嵐', description: '毎秒10億個焼けるようになった', icon: 'ach-baked1b', earned: (s) => perSecond(s) >= 1e9 },
+  { id: 'clicks1k', name: 'お得意さま', description: 'お皿を1,000回クリックした', icon: 'ach-okyaku', earned: (s) => s.clicks >= 1_000 },
+  { id: 'clicks10k', name: 'お客さん1万人', description: 'お皿を1万回クリックした', icon: 'ach-okyaku', earned: (s) => s.clicks >= 1e4 },
+  { id: 'hand1m', name: '手包みの達人', description: '手で餃子を100万個焼いた', icon: 'upgrade-menbou', earned: (s) => s.handBaked >= 1e6 },
+  { id: 'shokunin1', name: 'いらっしゃい、おじさん', description: '餃子職人のおじさんを雇った', icon: 'ach-shokunin', earned: (s) => s.owned.shokunin >= 1 },
+  { id: 'shokunin10', name: '職人チーム', description: '餃子職人のおじさんを10人雇った', icon: 'ach-shokunin', earned: (s) => s.owned.shokunin >= 10 },
+  { id: 'shokunin100', name: '職人を100人雇った', description: '餃子職人のおじさんを100人雇った', icon: 'ach-shokunin100', earned: (s) => s.owned.shokunin >= 100 },
+  { id: 'kikai1', name: '機械化', description: '餃子の自動製造機を導入した', icon: 'ach-kojo', earned: (s) => s.owned.kikai >= 1 },
+  { id: 'senmonten1', name: '開店！', description: '町の餃子専門店を開いた', icon: 'ach-mise', earned: (s) => s.owned.senmonten >= 1 },
+  { id: 'senmonten100', name: '100店舗達成', description: '町の餃子専門店を100店舗にした', icon: 'ach-mise100', earned: (s) => s.owned.senmonten >= 100 },
+  { id: 'idou100', name: '移動販売で全国制覇', description: '餃子の移動販売車を100台走らせた', icon: 'ach-idou', earned: (s) => s.owned.idou >= 100 },
+  { id: 'franchise1', name: '全国進出', description: '餃子フランチャイズを始めた', icon: 'ach-mise', earned: (s) => s.owned.franchise >= 1 },
+  { id: 'kojo1', name: '工場をつくる', description: '全自動餃子工場を建てた', icon: 'ach-kojo', earned: (s) => s.owned.kojo >= 1 },
+  { id: 'themepark1', name: 'テーマパークを完成', description: '餃子テーマパークを開いた', icon: 'ach-themepark', earned: (s) => s.owned.themepark >= 1 },
+  { id: 'rengo1', name: '世界中に届けた', description: '世界餃子連合を結成した', icon: 'ach-sekai2', earned: (s) => s.owned.rengo >= 1 },
+  { id: 'eisei1', name: '宇宙進出', description: '餃子人工衛星を打ち上げた', icon: 'ach-uchu', earned: (s) => s.owned.eisei >= 1 },
+  { id: 'getsumen1', name: '月に進出した', description: '月面餃子基地をつくった', icon: 'ach-tsuki', earned: (s) => s.owned.getsumen >= 1 },
+  { id: 'kasei1', name: '火星に進出した', description: '火星餃子農園をひらいた', icon: 'ach-kasei', earned: (s) => s.owned.kasei >= 1 },
+  { id: 'ginga1', name: '銀河に広めた', description: '銀河餃子帝国を築いた', icon: 'ach-ginga', earned: (s) => s.owned.ginga >= 1 },
+  { id: 'wakusei1', name: '宇宙工場を建設', description: '餃子惑星を手に入れた', icon: 'ach-uchukojo', earned: (s) => s.owned.wakusei >= 1 },
+  { id: 'jiku1', name: '時空を超えて', description: '時空餃子転送門を開いた', icon: 'ach-kami', earned: (s) => s.owned.jiku >= 1 },
+  { id: 'total1000', name: '1000台の機械', description: '設備を合計1,000台そろえた', icon: 'ach-kikai1000', earned: (s) => BUILDINGS.reduce((sum, b) => sum + s.owned[b.id], 0) >= 1_000 },
   { id: 'upgrade1', name: 'ひと工夫', description: '強化を1つ買った', icon: 'upgrade-menbou', earned: (s) => s.upgrades.length >= 1 },
   { id: 'upgrade10', name: '研究熱心', description: '強化を10個買った', icon: 'upgrade-aichip', earned: (s) => s.upgrades.length >= 10 },
   { id: 'upgrade25', name: '餃子研究家', description: '強化を25個買った', icon: 'building-kenkyujo', earned: (s) => s.upgrades.length >= 25 },
-  { id: 'rebirth1', name: 'のれん分け', description: 'はじめてのれん分けをした', icon: 'bonus-crown', earned: (s) => s.rebirths >= 1 },
-  { id: 'rebirth10', name: '餃子の家元', description: 'のれん分けを10回した', icon: 'ach-kami', earned: (s) => s.rebirths >= 10 },
-  { id: 'golden1', name: '金色の出会い', description: '金の餃子を1回つかまえた', icon: 'golden', earned: (s) => s.goldenClicks >= 1 },
+  { id: 'upgrade50', name: '餃子博士', description: '強化を50個買った', icon: 'upgrade-recipebook', earned: (s) => s.upgrades.length >= 50 },
+  { id: 'upgradeAll', name: '全レシピを解放した', description: '強化をすべて買った', icon: 'ach-allrecipe', earned: (s) => s.upgrades.length >= UPGRADES.length },
+  { id: 'golden1', name: '黄金餃子をつかんだ', description: '金の餃子を1回つかまえた', icon: 'ach-golden', earned: (s) => s.goldenClicks >= 1 },
   { id: 'golden7', name: 'ラッキーセブン', description: '金の餃子を7回つかまえた', icon: 'bonus-clover', earned: (s) => s.goldenClicks >= 7 },
   { id: 'golden77', name: '金の餃子ハンター', description: '金の餃子を77回つかまえた', icon: 'bonus-crown', earned: (s) => s.goldenClicks >= 77 },
+  { id: 'goldenRare', name: 'レア餃子を発見した', description: '金の餃子から「神の手」が出た', icon: 'ach-rare', earned: (s) => s.goldenSeen.includes('clickFrenzy') },
+  { id: 'goldenAll', name: '全種類の餃子を集めた', description: '金の餃子の効果を4種類すべて見た', icon: 'ach-allgolden', earned: (s) => GOLDEN_EFFECTS.every((e) => s.goldenSeen.includes(e.kind)) },
+  { id: 'rebirth1', name: 'のれん分け', description: 'はじめてのれん分けをした', icon: 'bonus-crown', earned: (s) => s.rebirths >= 1 },
+  { id: 'rebirth10', name: '餃子の家元', description: 'のれん分けを10回した', icon: 'ach-kami', earned: (s) => s.rebirths >= 10 },
+  { id: 'sukkarakan', name: 'すっからかん', description: '餃子を使い切って、手持ちがぴったり0個になった', icon: 'ach-hidden', hidden: true, earned: (s) => s.baked >= 1_000 && s.gyoza < 1 },
 ];
 
-/** Achievements earned in this shop, plus the ones kept through のれん分け. */
+/** Writes newly earned achievements into the save so they stay earned. */
+export function recordAchievements(state: GameState): GameState {
+  const earned = earnedAchievements(state);
+  if (earned.size === state.keptAchievements.length) return state;
+  return { ...state, keptAchievements: [...earned] };
+}
+
+/** Achievements earned now, plus the ones already recorded. */
 export function earnedAchievements(state: GameState): Set<string> {
   return new Set([
     ...state.keptAchievements,
