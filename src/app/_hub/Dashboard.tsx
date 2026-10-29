@@ -13,8 +13,9 @@ import {
   Text,
   Timer,
   Toaster,
+  type Step,
 } from '@kazamitte/kazamitte-ui';
-import { CHALLENGE, MILESTONES, taunt, type ChallengeState } from '@/lib/challenge';
+import { CURRENT_ROUND, ROUNDS, getRound, taunt, type ChallengeState } from '@/lib/challenge';
 import { IdeaBox } from './IdeaBox';
 import { Journey } from './Journey';
 import { Reactions } from './Reactions';
@@ -22,9 +23,13 @@ import { ThemeToggle } from './ThemeToggle';
 import { useMash } from './useMash';
 import { toaster } from './toaster';
 
-const START = new Date(CHALLENGE.startAt).getTime();
-const END = new Date(CHALLENGE.endAt).getTime();
 const POLL_MS = 5000;
+
+const dateFormat = new Intl.DateTimeFormat('ja-JP', {
+  month: 'numeric',
+  day: 'numeric',
+  timeZone: 'Asia/Tokyo',
+});
 
 const timeFormat = new Intl.DateTimeFormat('ja-JP', {
   hour: '2-digit',
@@ -56,13 +61,24 @@ function formatTime(iso: string) {
   return timeFormat.format(new Date(iso));
 }
 
+/**
+ * The hub for one round. The current round is live (polls, takes cheers and
+ * votes); earlier rounds are archived and shown read-only.
+ */
 export function Dashboard({
+  round,
   initialState,
   serverNow,
 }: {
+  round: number;
   initialState: ChallengeState;
   serverNow: number;
 }) {
+  const r = getRound(round)!;
+  const archived = round !== CURRENT_ROUND.round;
+  const start = new Date(r.startAt).getTime();
+  const end = new Date(r.endAt).getTime();
+  const { milestones } = r;
   const [state, setState] = useState(initialState);
   const [now, setNow] = useState<number | null>(serverNow);
   const [adminToken, setAdminToken] = useState<string | null>(null);
@@ -75,6 +91,8 @@ export function Dashboard({
 
   useEffect(() => {
     setNow(Date.now());
+    // Archived rounds are frozen: nothing to poll, nothing to administer.
+    if (archived) return;
     setAdminToken(takeAdminToken());
     const tick = setInterval(() => setNow(Date.now()), 1000);
     const poll = setInterval(() => void refresh(), POLL_MS);
@@ -85,20 +103,19 @@ export function Dashboard({
       clearInterval(poll);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [refresh]);
+  }, [refresh, archived]);
 
   const done = new Set(state.logs.map((l) => l.milestone).filter(Boolean));
-  const completedSteps = MILESTONES.filter((m) => done.has(m.value)).length;
+  const completedSteps = milestones.filter((m) => done.has(m.value)).length;
 
   const elapsedPct =
-    now == null ? 0 : Math.min(100, Math.max(0, ((now - START) / (END - START)) * 100));
-  const phase =
-    now == null ? null : now < START ? 'before' : now >= END ? 'finished' : 'live';
+    now == null ? 0 : Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
+  const phase = now == null ? null : now < start ? 'before' : now >= end ? 'finished' : 'live';
   const finished = phase === 'finished';
 
   const deployLog = state.logs.find((l) => l.milestone === 'deploy');
   const firstDeployMin = deployLog
-    ? Math.round((new Date(deployLog.createdAt).getTime() - START) / 60_000)
+    ? Math.round((new Date(deployLog.createdAt).getTime() - start) / 60_000)
     : null;
   const totalReactions = Object.values(state.reactions).reduce((s, n) => s + (n ?? 0), 0);
 
@@ -112,6 +129,16 @@ export function Dashboard({
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:py-12">
       <Stack gap={8}>
+        {archived && (
+          <Text asChild textStyle="dense-14">
+            <p className="rounded-lg bg-(--r-base-bg-subtle) px-3 py-2">
+              これは第{round}回の記録です（終了済み・読むだけ）。
+              <a href="/" className="underline underline-offset-2">
+                いまの回はこちら
+              </a>
+            </p>
+          </Text>
+        )}
         <div className="grid items-start gap-6 md:grid-cols-[1fr_auto]">
           <Stack gap={4}>
             <Stack direction="row" gap={2} align="center" wrap>
@@ -122,29 +149,26 @@ export function Dashboard({
               )}
               {finished && (
                 <Badge tone="success" variant="solid">
-                  {completedSteps === MILESTONES.length ? '✓ 60分で完成しました' : '終了しました'}
+                  {completedSteps === milestones.length ? '✓ 60分で完成しました' : '終了しました'}
                 </Badge>
               )}
               {phase === 'before' && <Badge tone="info">まもなく開始</Badge>}
               <Text textStyle="dense-14" tone="muted">
-                {formatTime(CHALLENGE.startAt)} – {formatTime(CHALLENGE.endAt)}
+                第{round}回 · {formatDate(r.startAt)} {formatTime(r.startAt)} –{' '}
+                {formatTime(r.endAt)}
               </Text>
               <ThemeToggle />
             </Stack>
 
             <Heading level={1} size="display-44" className="max-md:text-highlight-28">
-              {CHALLENGE.title}
+              {r.title}
             </Heading>
 
-            <Text textStyle="body-18">
-              {finished
-                ? 'エンジニアが AI（Claude）と一緒に、ゼロからこのページを60分で作って公開しました。いま見ているこのページが、その完成品です。'
-                : 'エンジニアが AI（Claude）と一緒に、ゼロからこのページを作っています。いま見ているこのページが、まさに作っている最中のアプリです。'}
-            </Text>
+            <Text textStyle="body-18">{finished ? r.lead.finished : r.lead.live}</Text>
 
             {phase === 'live' && now != null && (
               <Text textStyle="body-18" tone="strong" weight="bold" aria-live="polite">
-                {taunt(END - now, completedSteps, MILESTONES.length)}
+                {taunt(end - now, completedSteps, milestones.length)}
               </Text>
             )}
 
@@ -170,11 +194,18 @@ export function Dashboard({
 
             <nav aria-label="このページでできること">
               <Stack direction="row" gap={2} wrap>
+                {r.appPath && (
+                  <Button asChild variant="outline" size="sm">
+                    <a href="#demo">🎮 デモを見る</a>
+                  </Button>
+                )}
                 <Button asChild variant="outline" size="sm">
-                  <a href="#message">💬 メッセージを送る</a>
+                  <a href="#message">
+                    {archived ? '💬 応援メッセージを読む' : '💬 メッセージを送る'}
+                  </a>
                 </Button>
                 <Button asChild variant="outline" size="sm">
-                  <a href="#ideas">💡 次に作る機能に投票</a>
+                  <a href="#ideas">{archived ? '💡 集まったアイデア' : '💡 次に作る機能に投票'}</a>
                 </Button>
                 <Button asChild variant="outline" size="sm">
                   <a href="#journey">📜 60分のあゆみを読む</a>
@@ -183,9 +214,11 @@ export function Dashboard({
             </nav>
           </Stack>
 
-          <QuickCheer count={state.cheerCount} onCheered={setState}>
-            <Reactions reactions={state.reactions} onUpdated={setState} />
-          </QuickCheer>
+          {!archived && (
+            <QuickCheer count={state.cheerCount} onCheered={setState}>
+              <Reactions reactions={state.reactions} onUpdated={setState} />
+            </QuickCheer>
+          )}
         </div>
 
         {!finished && (
@@ -200,7 +233,7 @@ export function Dashboard({
                     key={phase}
                     countdown
                     autoStart
-                    startMs={Math.max(0, END - (phase === 'before' ? START : now))}
+                    startMs={Math.max(0, end - (phase === 'before' ? start : now))}
                     controls={false}
                   />
                 )}
@@ -215,16 +248,30 @@ export function Dashboard({
           </Card.Root>
         )}
 
+        {r.appPath && <Demo src={r.appPath} />}
+
         <div className="grid items-start gap-4 md:grid-cols-2">
-          <CheerCard state={state} onPosted={setState} />
-          <Journey logs={state.logs} live={!finished} />
+          <CheerCard state={state} readOnly={archived} onPosted={setState} />
+          <Journey logs={state.logs} startAt={r.startAt} milestones={milestones} live={!finished} />
         </div>
 
         <div id="ideas" className="scroll-mt-6">
-          <IdeaBox ideas={state.ideas} adminToken={adminToken} onUpdated={setState} />
+          <IdeaBox
+            ideas={state.ideas}
+            adminToken={adminToken}
+            readOnly={archived}
+            onUpdated={setState}
+          />
         </div>
 
-        {adminToken && <AdminForm token={adminToken} doneSet={done} onPosted={setState} />}
+        {adminToken && (
+          <AdminForm
+            token={adminToken}
+            milestones={milestones}
+            doneSet={done}
+            onPosted={setState}
+          />
+        )}
 
         <footer className="border-t border-(--r-base-border) pt-6">
           <Text textStyle="dense-14" tone="muted">
@@ -236,10 +283,59 @@ export function Dashboard({
               ソースコード（GitHub）
             </a>
           </Text>
+          <PastRounds current={round} />
         </footer>
       </Stack>
       <Toaster toaster={toaster} />
     </main>
+  );
+}
+
+function formatDate(iso: string) {
+  return dateFormat.format(new Date(iso));
+}
+
+/** The round's app in a frame, so viewers can play with it as it's being built. */
+function Demo({ src }: { src: string }) {
+  return (
+    <Card.Root id="demo" variant="elevated" className="scroll-mt-6">
+      <Card.Header>
+        <Card.Title>🎮 デモ</Card.Title>
+        <Card.Description>
+          作っている最中のアプリです。
+          <a href={src} className="underline underline-offset-2">
+            別のページで開く
+          </a>
+        </Card.Description>
+      </Card.Header>
+      <Card.Body>
+        <iframe
+          src={src}
+          title="制作中のアプリのデモ"
+          className="h-[32rem] w-full rounded-lg border border-(--r-base-border)"
+        />
+      </Card.Body>
+    </Card.Root>
+  );
+}
+
+/** Links to the other rounds' hubs. */
+function PastRounds({ current }: { current: number }) {
+  const others = ROUNDS.filter((r) => r.round !== current);
+  if (others.length === 0) return null;
+  return (
+    <Text textStyle="dense-14" tone="muted" className="mt-2">
+      ほかの回：
+      {others.map((r) => (
+        <a
+          key={r.round}
+          href={r.round === CURRENT_ROUND.round ? '/' : `/archive/${r.round}`}
+          className="ml-2 underline underline-offset-2"
+        >
+          第{r.round}回 {r.title}
+        </a>
+      ))}
+    </Text>
   );
 }
 
@@ -305,9 +401,11 @@ function QuickCheer({
 
 function CheerCard({
   state,
+  readOnly,
   onPosted,
 }: {
   state: ChallengeState;
+  readOnly: boolean;
   onPosted: (state: ChallengeState) => void;
 }) {
   const [name, setName] = useState('');
@@ -362,44 +460,54 @@ function CheerCard({
     <Card.Root id="message" className="scroll-mt-6">
       <Card.Header>
         <Card.Title>💬 応援メッセージ</Card.Title>
-        <Card.Description>ひとことどうぞ。書いたメッセージはここに並びます</Card.Description>
+        <Card.Description>
+          {readOnly
+            ? 'この回に届いたメッセージです'
+            : 'ひとことどうぞ。書いたメッセージはここに並びます'}
+        </Card.Description>
       </Card.Header>
       <Card.Body>
         <Stack gap={6}>
-          <form onSubmit={submit}>
-            <Stack gap={3}>
-              <Field.Root>
-                <Field.Label>メッセージ</Field.Label>
-                <Field.Input
-                  value={message}
-                  maxLength={140}
-                  enterKeyHint="send"
-                  autoComplete="off"
-                  placeholder="例：がんばれ〜！"
-                  onChange={(e) => setMessage(e.target.value)}
-                />
-                <Field.HelperText>{message.length} / 140</Field.HelperText>
-              </Field.Root>
-              <div className="grid items-end gap-3 sm:grid-cols-[1fr_auto]">
+          {!readOnly && (
+            <form onSubmit={submit}>
+              <Stack gap={3}>
                 <Field.Root>
-                  <Field.Label>名前（任意・次回も使います）</Field.Label>
+                  <Field.Label>メッセージ</Field.Label>
                   <Field.Input
-                    value={name}
-                    maxLength={30}
-                    autoComplete="nickname"
-                    placeholder="名無しさん"
-                    onChange={(e) => setName(e.target.value)}
+                    value={message}
+                    maxLength={140}
+                    enterKeyHint="send"
+                    autoComplete="off"
+                    placeholder="例：がんばれ〜！"
+                    onChange={(e) => setMessage(e.target.value)}
                   />
+                  <Field.HelperText>{message.length} / 140</Field.HelperText>
                 </Field.Root>
-                <Button type="submit" disabled={sending || !trimmed} className="max-sm:w-full">
-                  🔥 送る
-                </Button>
-              </div>
-            </Stack>
-          </form>
+                <div className="grid items-end gap-3 sm:grid-cols-[1fr_auto]">
+                  <Field.Root>
+                    <Field.Label>名前（任意・次回も使います）</Field.Label>
+                    <Field.Input
+                      value={name}
+                      maxLength={30}
+                      autoComplete="nickname"
+                      placeholder="名無しさん"
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </Field.Root>
+                  <Button type="submit" disabled={sending || !trimmed} className="max-sm:w-full">
+                    🔥 送る
+                  </Button>
+                </div>
+              </Stack>
+            </form>
+          )}
 
           {state.cheers.length === 0 ? (
-            <Text tone="muted">まだメッセージはありません。最初のひとことをどうぞ</Text>
+            <Text tone="muted">
+              {readOnly
+                ? 'メッセージはありませんでした'
+                : 'まだメッセージはありません。最初のひとことをどうぞ'}
+            </Text>
           ) : (
             <ul className="flex max-h-[28rem] flex-col gap-2 overflow-y-auto pr-1">
               {state.cheers.map((c) => (
@@ -433,10 +541,12 @@ function CheerCard({
 
 function AdminForm({
   token,
+  milestones,
   doneSet,
   onPosted,
 }: {
   token: string;
+  milestones: Step[];
   doneSet: Set<string | null>;
   onPosted: (state: ChallengeState) => void;
 }) {
@@ -476,11 +586,13 @@ function AdminForm({
               <Field.Label>マイルストーン達成</Field.Label>
               <Field.Select value={milestone} onChange={(e) => setMilestone(e.target.value)}>
                 <option value="">なし</option>
-                {MILESTONES.filter((m) => !doneSet.has(m.value)).map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {String(m.title)}
-                  </option>
-                ))}
+                {milestones
+                  .filter((m) => !doneSet.has(m.value))
+                  .map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {String(m.title)}
+                    </option>
+                  ))}
               </Field.Select>
             </Field.Root>
             <div>

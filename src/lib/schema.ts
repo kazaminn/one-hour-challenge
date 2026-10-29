@@ -1,6 +1,6 @@
 import 'server-only';
 import { z } from 'zod';
-import { IDEA_STATUSES, MILESTONES, REACTIONS } from './challenge';
+import { CURRENT_ROUND, IDEA_STATUSES, REACTIONS } from './challenge';
 
 /**
  * User text: strip control characters and bidi overrides (U+202A–202E,
@@ -29,7 +29,7 @@ export const cheerSchema = z.object({
 export const logSchema = z.object({
   body: text(280).pipe(z.string().min(1)),
   milestone: z
-    .enum(MILESTONES.map((m) => m.value) as [string, ...string[]])
+    .enum(CURRENT_ROUND.milestones.map((m) => m.value) as [string, ...string[]])
     .nullish()
     .transform((v) => v ?? null),
 });
