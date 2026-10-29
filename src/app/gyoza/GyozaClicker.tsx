@@ -27,6 +27,7 @@ import {
   pendingRecipes,
   perClick,
   pickGoldenEffect,
+  recordAchievements,
   rebirth,
   tezukuriClickShare,
   tick,
@@ -132,6 +133,7 @@ export function GyozaClicker() {
     if (!before) return;
     const fresh = ACHIEVEMENTS.filter((a) => earned.has(a.id) && !before.has(a.id));
     if (fresh.length === 0) return;
+    setState((s) => recordAchievements(s));
     sound('achievement');
     showToasts(
       fresh.map((a) => ({
@@ -519,7 +521,10 @@ export function GyozaClicker() {
                       <span className="grid size-16 place-items-center rounded-xl bg-stone-700 text-[1.75rem] font-bold text-stone-300">
                         ?
                       </span>
-                      <span className="text-xs text-stone-500">？？？</span>
+                      {/* Locked ones show their goal; secrets stay secret. */}
+                      <span className="text-xs leading-tight text-stone-500">
+                        {a.hidden ? '隠し実績' : a.description}
+                      </span>
                     </li>
                   ),
                 )}
