@@ -69,6 +69,10 @@ export type GameState = {
   owned: Record<BuildingId, number>;
   /** Ids of the upgrades bought, in purchase order. */
   upgrades: string[];
+  /** Golden gyoza effects still running. */
+  buffs: Buff[];
+  /** Golden gyoza ever clicked. */
+  goldenClicks: number;
   /** When this state was last advanced, in ms since the epoch. */
   at: number;
 };
@@ -79,6 +83,8 @@ export function initialState(now: number): GameState {
     baked: 0,
     owned: Object.fromEntries(BUILDINGS.map((b) => [b.id, 0])) as Record<BuildingId, number>,
     upgrades: [],
+    buffs: [],
+    goldenClicks: 0,
     at: now,
   };
 }
@@ -229,10 +235,120 @@ function add(state: GameState, n: number): GameState {
   return { ...state, gyoza: state.gyoza + n, baked: state.baked + n };
 }
 
-/** Advances to `now`: whatever was produced since `state.at`, offline time included. */
+/**
+ * Advances to `now`: whatever was produced since `state.at`, offline time
+ * included. Time is cut where a buff ends so a ×7 doesn't run past its end.
+ */
 export function tick(state: GameState, now: number): GameState {
-  const seconds = Math.max(0, now - state.at) / 1000;
-  return { ...add(state, perSecond(state) * seconds), at: now };
+  if (now <= state.at) return state;
+  const base = perSecond(state);
+  const ends = state.buffs.map((b) => b.until).filter((t) => t > state.at && t < now);
+  const cuts = [state.at, ...[...new Set(ends)].sort((a, b) => a - b), now];
+  let baked = 0;
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const from = cuts[i]!;
+    baked += base * productionBoost(state, from) * ((cuts[i + 1]! - from) / 1000);
+  }
+  return { ...add(state, baked), buffs: state.buffs.filter((b) => b.until > now), at: now };
+}
+
+/** The golden gyoza's effects. `weight` sets how often each is drawn. */
+export const GOLDEN_EFFECTS = [
+  {
+    kind: 'frenzy',
+    name: '焼きたてラッシュ',
+    icon: '🔥',
+    description: '77秒間、毎秒の生産が7倍',
+    seconds: 77,
+    weight: 4,
+  },
+  {
+    kind: 'clickFrenzy',
+    name: '神の手',
+    icon: '⚡',
+    description: '13秒間、クリックが777倍',
+    seconds: 13,
+    weight: 1,
+  },
+  {
+    kind: 'lucky',
+    name: '幸運の餃子',
+    icon: '🍀',
+    description: '手持ちの15%か、生産15分ぶんの少ないほうをもらえる',
+    seconds: 0,
+    weight: 4,
+  },
+  {
+    kind: 'timeSkip',
+    name: '時間を先取り',
+    icon: '⏱️',
+    description: '生産5分ぶんをすぐもらえる',
+    seconds: 0,
+    weight: 2,
+  },
+] as const;
+
+export type GoldenEffect = (typeof GOLDEN_EFFECTS)[number];
+export type Buff = { kind: 'frenzy' | 'clickFrenzy'; until: number };
+
+/** How long a golden gyoza stays on screen, and the wait before the next one. */
+export const GOLDEN_STAY_MS = 13_000;
+export const GOLDEN_WAIT_MS = { min: 60_000, max: 180_000 } as const;
+
+function buffActive(state: GameState, kind: Buff['kind'], at: number): boolean {
+  return state.buffs.some((b) => b.kind === kind && b.until > at);
+}
+
+/** The production multiplier buffs give at time `at`. */
+export function productionBoost(state: GameState, at: number): number {
+  return buffActive(state, 'frenzy', at) ? 7 : 1;
+}
+
+/** Per second right now, golden gyoza buffs included. */
+export function currentPerSecond(state: GameState, now: number): number {
+  return perSecond(state) * productionBoost(state, now);
+}
+
+/** Picks an effect from `roll` in [0, 1), so the game stays free of randomness. */
+export function pickGoldenEffect(roll: number): GoldenEffect {
+  const total = GOLDEN_EFFECTS.reduce((sum, e) => sum + e.weight, 0);
+  let left = roll * total;
+  for (const e of GOLDEN_EFFECTS) {
+    left -= e.weight;
+    if (left < 0) return e;
+  }
+  return GOLDEN_EFFECTS[0];
+}
+
+/** Applies a clicked golden gyoza's effect. Returns the new state and the gyoza it gave right away. */
+export function goldenClick(
+  state: GameState,
+  effect: GoldenEffect,
+  now: number,
+): { state: GameState; gained: number } {
+  const counted = { ...tick(state, now), goldenClicks: state.goldenClicks + 1 };
+  if (effect.kind === 'frenzy' || effect.kind === 'clickFrenzy') {
+    // A second one of the same kind restarts the timer instead of stacking.
+    const buffs = counted.buffs.filter((b) => b.kind !== effect.kind);
+    return {
+      state: { ...counted, buffs: [...buffs, { kind: effect.kind, until: now + effect.seconds * 1000 }] },
+      gained: 0,
+    };
+  }
+  const rate = currentPerSecond(counted, now);
+  const gained =
+    effect.kind === 'lucky' ? Math.min(counted.gyoza * 0.15, rate * 900) + 13 : rate * 300;
+  return { state: add(counted, gained), gained };
+}
+
+/** Seconds left on each running buff, for display. */
+export function buffsLeft(state: GameState, now: number): { effect: GoldenEffect; seconds: number }[] {
+  return state.buffs
+    .filter((b) => b.until > now)
+    .map((b) => ({
+      effect: GOLDEN_EFFECTS.find((e) => e.kind === b.kind)!,
+      seconds: Math.ceil((b.until - now) / 1000),
+    }));
 }
 
 /** What each 手作り餃子 adds to a click: its owned-count bonus and upgrades apply here too. */
@@ -249,7 +365,8 @@ export function perClick(state: GameState): number {
   const doubles = ups.filter((u) => u.kind === 'clickDouble').length;
   const share = ups.reduce((sum, u) => sum + (u.kind === 'clickRate' ? u.share : 0), 0);
   const base = 1 + state.owned.tezukuri * tezukuriClickShare(state);
-  return base * 2 ** doubles + perSecond(state) * share;
+  const clickBoost = buffActive(state, 'clickFrenzy', state.at) ? 777 : 1;
+  return (base * 2 ** doubles + currentPerSecond(state, state.at) * share) * clickBoost;
 }
 
 export function click(state: GameState): GameState {
@@ -315,6 +432,13 @@ export function load(json: string | null, now: number): GameState {
       baked: num(saved.baked, 0),
       owned,
       upgrades,
+      buffs: Array.isArray(saved.buffs)
+        ? saved.buffs.filter(
+            (b): b is Buff =>
+              (b?.kind === 'frenzy' || b?.kind === 'clickFrenzy') && Number.isFinite(b?.until),
+          )
+        : [],
+      goldenClicks: Math.floor(num(saved.goldenClicks, 0)),
       at: Math.min(num(saved.at, now), now),
     };
   } catch {
@@ -368,6 +492,9 @@ export const ACHIEVEMENTS: readonly {
   { id: 'rate1k', name: '餃子の滝', description: '毎秒1,000個焼けるようになった', earned: (s) => perSecond(s) >= 1_000 },
   { id: 'upgrade1', name: 'ひと工夫', description: '強化を1つ買った', earned: (s) => s.upgrades.length >= 1 },
   { id: 'upgrade10', name: '研究熱心', description: '強化を10個買った', earned: (s) => s.upgrades.length >= 10 },
+  { id: 'golden1', name: '金色の出会い', description: '金の餃子を1回つかまえた', earned: (s) => s.goldenClicks >= 1 },
+  { id: 'golden7', name: 'ラッキーセブン', description: '金の餃子を7回つかまえた', earned: (s) => s.goldenClicks >= 7 },
+  { id: 'golden77', name: '金の餃子ハンター', description: '金の餃子を77回つかまえた', earned: (s) => s.goldenClicks >= 77 },
   { id: 'upgrade25', name: '餃子研究家', description: '強化を25個買った', earned: (s) => s.upgrades.length >= 25 },
 ];
 
