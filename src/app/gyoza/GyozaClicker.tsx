@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import {
   ACHIEVEMENTS,
   BUILDINGS,
@@ -21,21 +21,29 @@ import {
   goldenClick,
   goldenWaitMs,
   initialState,
+  learnSkill,
   load,
   nextBonusStep,
   nextRecipeAt,
   pendingRecipes,
   perClick,
   pickGoldenEffect,
+  priceFactor,
+  recipePercent,
   recordAchievements,
   rebirth,
+  SKILL_PATHS,
+  SKILLS,
+  skillStatus,
   tezukuriClickShare,
   tick,
   unitPerSecond,
   upgradeMultiplier,
+  usableRecipes,
   visibility,
   type BuildingId,
   type GameState,
+  type Skill,
   type Upgrade,
 } from './game';
 import { playSound, type SoundName } from './sound';
@@ -107,6 +115,9 @@ export function GyozaClicker() {
   const [focusedUpgrade, setFocusedUpgrade] = useState<string | null>(null);
   const [golden, setGolden] = useState<Golden | null>(null);
   const [tab, setTab] = useState<Tab>('shop');
+  const [skillTreeOpen, setSkillTreeOpen] = useState(false);
+  /** The のれん分け dialogs: asking first, then the new shop with the recipes it got. */
+  const [rebirthStep, setRebirthStep] = useState<null | 'confirm' | { gained: number }>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -222,7 +233,7 @@ export function GyozaClicker() {
 
   const onGolden = () => {
     setGolden(null);
-    const effect = pickGoldenEffect(Math.random());
+    const effect = pickGoldenEffect(Math.random(), stateRef.current);
     const { state: next, gained } = goldenClick(stateRef.current, effect, Date.now());
     setState(next);
     save(next);
@@ -241,6 +252,23 @@ export function GyozaClicker() {
     earnedRef.current = earnedAchievements(next);
     setState(next);
     save(next);
+  };
+
+  const onRebirth = () => {
+    const before = stateRef.current;
+    const next = rebirth(tick(before, Date.now()), Date.now());
+    if (!next) return;
+    onReplace(next);
+    setRebirthStep({ gained: next.recipes - before.recipes });
+    sound('achievement');
+  };
+
+  const onLearnSkill = (id: string) => {
+    const next = learnSkill(stateRef.current, id);
+    if (!next) return;
+    setState(next);
+    save(next);
+    sound('achievement');
   };
 
   const onBuyUpgrade = (id: string) => {
@@ -291,7 +319,14 @@ export function GyozaClicker() {
               毎秒 {formatRate(rate)} 個・1クリック {format(perClick(state))} 個
             </p>
             {state.recipes > 0 && (
-              <p className="text-xs text-amber-800">秘伝のレシピ {format(state.recipes)}個（+{format(state.recipes)}%）</p>
+              <button
+                type="button"
+                onClick={() => setSkillTreeOpen(true)}
+                className="cursor-pointer text-xs text-amber-800 underline decoration-dotted underline-offset-2 hover:text-amber-950"
+              >
+                秘伝のレシピ {format(state.recipes)}個（+{format(state.recipes * recipePercent(state))}%）
+                {usableRecipes(state) > 0 && `・使える ${format(usableRecipes(state))}個`}
+              </button>
             )}
           </div>
           {buffs.length > 0 && (
@@ -414,7 +449,7 @@ export function GyozaClicker() {
                     );
                   }
                   const count = amount === 'max' ? affordableCount(state, b) : amount;
-                  const price = costOf(b, state.owned[b.id], count);
+                  const price = costOf(b, state.owned[b.id], count, priceFactor(state));
                   const affordable = state.gyoza >= price;
                   return (
                     <li key={b.id} className="flex items-center gap-3 rounded-xl bg-white p-2 shadow-sm">
@@ -536,6 +571,8 @@ export function GyozaClicker() {
                 state={state}
                 earnedCount={earned.size}
                 onReplace={onReplace}
+                onRebirth={() => setRebirthStep('confirm')}
+                onSkillTree={() => setSkillTreeOpen(true)}
                 settings={settings}
                 onSettings={changeSettings}
               />
@@ -560,6 +597,25 @@ export function GyozaClicker() {
             className="size-20 select-none drop-shadow-[0_0_12px_rgb(253_224_71)] md:size-24"
           />
         </button>
+      )}
+
+      {skillTreeOpen && (
+        <SkillTree state={state} onLearn={onLearnSkill} onClose={() => setSkillTreeOpen(false)} />
+      )}
+
+      {rebirthStep === 'confirm' && (
+        <RebirthConfirm state={state} onCancel={() => setRebirthStep(null)} onConfirm={onRebirth} />
+      )}
+      {rebirthStep !== null && rebirthStep !== 'confirm' && (
+        <RebirthDone
+          state={state}
+          gained={rebirthStep.gained}
+          onSkillTree={() => {
+            setRebirthStep(null);
+            setSkillTreeOpen(true);
+          }}
+          onClose={() => setRebirthStep(null)}
+        />
       )}
 
       <div aria-live="polite" className="fixed inset-x-0 bottom-4 flex flex-col items-center gap-2 px-4">
@@ -597,12 +653,16 @@ function MorePanel({
   state,
   earnedCount,
   onReplace,
+  onRebirth,
+  onSkillTree,
   settings,
   onSettings,
 }: {
   state: GameState;
   earnedCount: number;
   onReplace: (next: GameState) => void;
+  onRebirth: () => void;
+  onSkillTree: () => void;
   settings: Settings;
   onSettings: (next: Settings) => void;
 }) {
@@ -623,6 +683,7 @@ function MorePanel({
     ['金の餃子をつかまえた回数', `${state.goldenClicks}回`],
     ['遊びはじめてから', formatDuration(state.at - state.startedAt)],
     ['のれん分けした回数', `${state.rebirths}回`],
+    ['習得したスキル', `${state.skills.length} / ${SKILLS.length}`],
     ['すべての店で焼いた餃子', `${format(state.lifetimeBaked + state.baked)}個`],
   ];
 
@@ -650,19 +711,6 @@ function MorePanel({
   };
 
   const pending = pendingRecipes(state);
-
-  const onRebirth = () => {
-    if (
-      !window.confirm(
-        `のれん分けして新しい店を始めます。餃子・設備・強化は最初からになり、秘伝のレシピが${pending}個増えます。`,
-      )
-    )
-      return;
-    const next = rebirth(state, Date.now());
-    if (!next) return;
-    onReplace(next);
-    setMessage('');
-  };
 
   const onReset = () => {
     if (!window.confirm('最初からやり直します。餃子も設備も強化も実績もすべて消えます。')) return;
@@ -725,14 +773,14 @@ function MorePanel({
       <section className="flex flex-col gap-2">
         <h3 className="font-bold">のれん分け</h3>
         <p className="text-stone-600">
-          お店を弟子にゆずって、新しいお店を一から始めます。それまでに焼いた餃子の数に応じて「秘伝のレシピ」がもらえ、1つにつき生産とクリックがずっと+1%されます。実績もそのまま残ります。
+          お店を弟子にゆずって、新しいお店を一から始めます。それまでに焼いた餃子の数に応じて「秘伝のレシピ」がもらえ、1つにつき生産とクリックがずっと+1%されます。レシピは「餃子の道」でスキルの習得にも使えます。実績とスキルはそのまま残ります。
         </p>
         <div className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm">
           <img src="/gyoza/bonus-crown.webp" alt="" className="size-12 shrink-0" />
           <div className="min-w-0 flex-1">
             <p>
               秘伝のレシピ <span className="font-bold tabular-nums">{format(state.recipes)}個</span>
-              <span className="ml-1 text-stone-600">（+{format(state.recipes)}%）</span>
+              <span className="ml-1 text-stone-600">（+{format(state.recipes * recipePercent(state))}%）</span>
             </p>
             <p>
               のれん分けでもらえる <span className="font-bold text-amber-700 tabular-nums">+{format(pending)}個</span>
@@ -742,7 +790,7 @@ function MorePanel({
             </p>
           </div>
         </div>
-        <div>
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             disabled={pending < 1}
@@ -750,6 +798,17 @@ function MorePanel({
             className="cursor-pointer rounded-lg bg-red-600 px-3 py-2 font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500"
           >
             のれん分けする
+          </button>
+          <button
+            type="button"
+            onClick={onSkillTree}
+            className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-2 font-bold text-white hover:bg-amber-700"
+          >
+            <img src="/gyoza/skill-cat-recipe.webp" alt="" className="size-5" />
+            餃子の道（スキル）
+            {usableRecipes(state) >= 10 && SKILLS.some((k) => skillStatus(state, k) === 'ready') && (
+              <span className="rounded-full bg-red-600 px-1.5 text-xs">!</span>
+            )}
           </button>
         </div>
       </section>
@@ -817,5 +876,339 @@ function MorePanel({
         </div>
       </section>
     </div>
+  );
+}
+
+/** A centered dialog over the game; Escape or the backdrop closes it when `onClose` is given. */
+function Modal({
+  label,
+  onClose,
+  className = '',
+  children,
+}: {
+  label: string;
+  onClose?: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+    if (!onClose) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div
+      className="fixed inset-0 z-20 overflow-y-auto bg-stone-950/60"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+    >
+      {/* min-h-full + centering rather than grid on the scroller, so a tall dialog still scrolls from its top. */}
+      <div
+        className="flex min-h-full items-center justify-center p-3 md:p-6"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose?.();
+        }}
+      >
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        tabIndex={-1}
+        className={`w-full rounded-2xl border-4 border-amber-900/70 bg-amber-50 text-stone-900 shadow-2xl outline-none ${className}`}
+      >
+        {children}
+      </div>
+      </div>
+    </div>
+  );
+}
+
+/** The totals both のれん分け dialogs show. */
+function RebirthTotals({ rows }: { rows: [string, string, string][] }) {
+  return (
+    <dl className="flex flex-col divide-y divide-amber-800/15 rounded-xl bg-white/80 px-3 text-sm shadow-inner">
+      {rows.map(([icon, label, value]) => (
+        <div key={label} className="flex items-center gap-2 py-2">
+          <dt className="flex-1 text-stone-600">{label}</dt>
+          <img src={`/gyoza/${icon}.webp`} alt="" className="size-6" />
+          <dd className="text-right font-bold tabular-nums">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function RebirthConfirm({
+  state,
+  onCancel,
+  onConfirm,
+}: {
+  state: GameState;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const pending = pendingRecipes(state);
+  const after = (state.recipes + pending) * recipePercent(state);
+  return (
+    <Modal label="のれん分けの確認" onClose={onCancel} className="max-w-md">
+      <div className="flex flex-col gap-3 p-4">
+        <h2 className="text-center text-xl font-bold text-amber-950">お店を弟子にゆずりますか？</h2>
+        <img src="/gyoza/scene-noren.webp" alt="" className="w-full rounded-xl" />
+        <p className="text-center text-sm leading-relaxed">
+          これまでに焼いた餃子が秘伝のレシピに生まれ変わります。
+          <br />
+          新しいお店を一から始めますが、実績やスキルはそのまま残ります。
+        </p>
+        <RebirthTotals
+          rows={[
+            ['gyoza', 'これまでに焼いた餃子', `${format(state.lifetimeBaked + state.baked)}個`],
+            ['skill-cat-recipe', '獲得できる秘伝のレシピ', `${format(pending)}個`],
+            ['bonus-crown', 'のれん分け後の永続ボーナス', `生産・クリック +${format(after)}%`],
+          ]}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="cursor-pointer rounded-xl border-2 border-stone-400 bg-stone-100 py-3 font-bold text-stone-700 hover:bg-stone-200"
+          >
+            やめる
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="cursor-pointer rounded-xl bg-red-600 py-3 font-bold text-white shadow hover:bg-red-700"
+          >
+            弟子にゆずる
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function RebirthDone({
+  state,
+  gained,
+  onSkillTree,
+  onClose,
+}: {
+  state: GameState;
+  gained: number;
+  onSkillTree: () => void;
+  onClose: () => void;
+}) {
+  const boost = format(state.recipes * recipePercent(state));
+  return (
+    <Modal label="のれん分け完了" onClose={onClose} className="max-w-md">
+      <div className="flex flex-col gap-3 p-4">
+        <h2 className="text-center text-[2rem] leading-tight font-black text-amber-950">のれん分け完了！</h2>
+        <img src="/gyoza/scene-newshop.webp" alt="" className="w-full rounded-xl" />
+        <p className="text-center text-sm leading-relaxed">
+          新しいお店を開店しました！
+          <br />
+          秘伝のレシピを <span className="font-bold">{format(gained)}</span> 個獲得しました。
+        </p>
+        <RebirthTotals
+          rows={[
+            ['skill-cat-recipe', '使える秘伝のレシピ', `${format(usableRecipes(state))}個`],
+            ['bonus-crown', '現在の永続ボーナス（累計）', `生産・クリック +${boost}%`],
+          ]}
+        />
+        <button
+          type="button"
+          onClick={onSkillTree}
+          className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-red-600 py-3 font-bold text-white shadow hover:bg-red-700"
+        >
+          <img src="/gyoza/skill-cat-recipe.webp" alt="" className="size-6" />
+          スキルツリーを開く
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="cursor-pointer rounded-xl border-2 border-amber-800/40 bg-white py-2.5 font-bold text-amber-900 hover:bg-amber-100"
+        >
+          ▶ ゲームをはじめる
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+const PATH_STYLE: Record<string, { head: string; line: string; ring: string }> = {
+  tezutsumi: { head: 'from-orange-200 to-amber-100', line: 'border-orange-400', ring: 'ring-orange-400' },
+  shokunin: { head: 'from-sky-200 to-blue-100', line: 'border-sky-500', ring: 'ring-sky-500' },
+  hiden: { head: 'from-violet-200 to-purple-100', line: 'border-violet-500', ring: 'ring-violet-500' },
+};
+
+/** The icon on a skill's node: its path's, or the crown for the big last ones. */
+function skillIcon(skill: Skill): string {
+  if (skill.cost >= 800) return 'skill-cat-final';
+  if (skill.cost >= 300) return 'skill-cat-special';
+  return SKILL_PATHS.find((p) => p.id === skill.path)!.icon;
+}
+
+function SkillTree({
+  state,
+  onLearn,
+  onClose,
+}: {
+  state: GameState;
+  onLearn: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<string>(SKILLS[0]!.id);
+  const skill = SKILLS.find((k) => k.id === selected)!;
+  const status = skillStatus(state, skill);
+  const usable = usableRecipes(state);
+
+  const node = (k: Skill) => {
+    const st = skillStatus(state, k);
+    const style = PATH_STYLE[k.path]!;
+    return (
+      <button
+        key={k.id}
+        type="button"
+        aria-pressed={selected === k.id}
+        aria-label={`${k.name}（レシピ${k.cost}）${st === 'done' ? '習得済み' : st === 'locked' ? 'まだ習得できない' : ''}`}
+        onClick={() => setSelected(k.id)}
+        className={`relative flex w-full cursor-pointer items-center gap-2 rounded-xl border-2 p-1.5 text-left shadow-sm transition-colors ${
+          st === 'locked'
+            ? 'border-stone-400 bg-stone-300/80 text-stone-600'
+            : st === 'done'
+              ? `${style.line} bg-white`
+              : `${style.line} bg-white/90 hover:bg-white`
+        } ${selected === k.id ? `ring-4 ${style.ring}` : ''} ${st === 'ready' ? 'gyoza-ready' : ''}`}
+      >
+        <span className="relative size-10 shrink-0">
+          <img
+            src={`/gyoza/${st === 'locked' ? 'skill-node-locked' : skillIcon(k)}.webp`}
+            alt=""
+            className="size-full"
+          />
+          {st === 'done' && (
+            <img src="/gyoza/skill-node-done.webp" alt="" className="absolute -right-1 -bottom-1 size-5" />
+          )}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-xs leading-tight font-bold md:text-sm">{k.name}</span>
+          <span className="flex items-center gap-0.5 text-xs tabular-nums">
+            <img src="/gyoza/skill-cat-recipe.webp" alt="" className="size-3.5" />
+            {k.cost}
+          </span>
+        </span>
+      </button>
+    );
+  };
+
+  return (
+    <Modal label="餃子の道 スキルツリー" onClose={onClose} className="max-w-6xl">
+      <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b-2 border-amber-800/20 px-4 py-3">
+        <div className="mr-auto">
+          <h2 className="text-[1.75rem] leading-tight font-black text-amber-950">餃子の道</h2>
+          <p className="text-xs text-stone-600">秘伝のレシピを使って、ずっと続く力を身につけましょう。</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <img src="/gyoza/skill-cat-recipe.webp" alt="" className="size-8" />
+          <div className="text-sm leading-tight">
+            <p className="text-xs text-stone-600">使えるレシピ</p>
+            <p className="text-xl font-bold tabular-nums">{format(usable)}</p>
+          </div>
+        </div>
+        <div className="text-sm leading-tight">
+          <p className="text-xs text-stone-600">累計レシピ / 永続ボーナス</p>
+          <p className="font-bold tabular-nums">
+            {format(state.recipes)}個・生産とクリック +{format(state.recipes * recipePercent(state))}%
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="閉じる"
+          className="grid size-9 cursor-pointer place-items-center rounded-full bg-stone-200 text-xl font-bold text-stone-700 hover:bg-stone-300"
+        >
+          ×
+        </button>
+      </header>
+
+      <div className="grid gap-3 p-3 lg:grid-cols-[1fr_16rem]">
+        <div className="grid gap-3 md:grid-cols-3">
+          {SKILL_PATHS.map((p) => {
+            const [root, a, b, a2, b2] = SKILLS.filter((k) => k.path === p.id) as Skill[];
+            const style = PATH_STYLE[p.id]!;
+            return (
+              <section key={p.id} className={`flex flex-col gap-2 rounded-xl bg-gradient-to-b ${style.head} p-2`}>
+                <div className="flex items-center gap-2">
+                  <img src={`/gyoza/${p.badge}.webp`} alt="" className="h-16 w-auto" />
+                  <div>
+                    <h3 className="font-black text-amber-950">{p.name}</h3>
+                    <p className="text-xs text-stone-700">{p.subtitle}</p>
+                  </div>
+                </div>
+                <div className="mx-auto w-3/4">{node(root!)}</div>
+                {/* Branch lines: down from the first skill, then out to both sides. */}
+                <div aria-hidden="true" className={`mx-auto h-3 w-1/2 rounded-t-md border-x-2 border-t-2 ${style.line}`} />
+                <div className="grid grid-cols-2 gap-2">
+                  {node(a!)}
+                  {node(b!)}
+                </div>
+                <div aria-hidden="true" className="grid grid-cols-2">
+                  <span className={`mx-auto h-3 border-l-2 ${style.line}`} />
+                  <span className={`mx-auto h-3 border-l-2 ${style.line}`} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {node(a2!)}
+                  {node(b2!)}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+
+        {/* On phones the details stay pinned to the bottom while the paths scroll past. */}
+        <aside
+          className="sticky bottom-0 flex flex-col gap-2 rounded-xl bg-white p-3 shadow-[0_-4px_12px_rgb(0_0_0/0.15)] lg:static lg:gap-3 lg:shadow-sm"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-3">
+            <img src={`/gyoza/${skillIcon(skill)}.webp`} alt="" className="size-10 shrink-0 lg:size-14" />
+            <div>
+              <p className="text-lg leading-tight font-bold">{skill.name}</p>
+              <p className="flex items-center gap-1 text-sm text-stone-600">
+                必要なレシピ
+                <img src="/gyoza/skill-cat-recipe.webp" alt="" className="size-4" />
+                <span className="font-bold text-stone-900 tabular-nums">{skill.cost}</span>
+              </p>
+            </div>
+          </div>
+          <p className="text-sm">{skill.description}</p>
+          <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-stone-700">
+            {status === 'done'
+              ? '習得済み：効果が出ています'
+              : status === 'locked'
+                ? `先に「${SKILLS.find((k) => k.id === skill.requires)?.name}」を習得してください`
+                : status === 'open'
+                  ? `レシピがあと${format(skill.cost - usable)}個足りません`
+                  : '習得できます'}
+          </p>
+          <button
+            type="button"
+            disabled={status !== 'ready'}
+            onClick={() => onLearn(skill.id)}
+            className="mt-auto flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-red-600 py-2.5 font-bold lg:py-3 text-white shadow hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500"
+          >
+            <img src="/gyoza/skill-cat-recipe.webp" alt="" className="size-5" />
+            {status === 'done' ? '習得済み' : 'レシピを使って習得する'}
+          </button>
+        </aside>
+      </div>
+    </Modal>
   );
 }

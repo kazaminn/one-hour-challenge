@@ -196,6 +196,8 @@ export type GameState = {
   recipes: number;
   lifetimeBaked: number;
   keptAchievements: string[];
+  /** Skills learned on 餃子の道, paid for with recipes. Kept through のれん分け. */
+  skills: string[];
   /** When this state was last advanced, in ms since the epoch. */
   at: number;
 };
@@ -216,12 +218,13 @@ export function initialState(now: number): GameState {
     recipes: 0,
     lifetimeBaked: 0,
     keptAchievements: [],
+    skills: [],
     at: now,
   };
 }
 
-export function cost(building: Building, owned: number): number {
-  return Math.ceil(building.baseCost * PRICE_GROWTH ** owned);
+export function cost(building: Building, owned: number, factor = 1): number {
+  return Math.ceil(building.baseCost * PRICE_GROWTH ** owned * factor);
 }
 
 /**
@@ -449,13 +452,18 @@ export function unitPerSecond(state: GameState, building: Building): number {
 export function perSecond(state: GameState): number {
   return (
     BUILDINGS.reduce((sum, b) => sum + unitPerSecond(state, b) * state.owned[b.id], 0) *
-    recipeBoost(state)
+    recipeBoost(state) *
+    skillProductionBoost(state)
   );
 }
 
-/** Each 秘伝のレシピ adds 1% to production and clicks, for good. */
+/** Each 秘伝のレシピ adds 1% to production and clicks, for good; 2% with 奇跡のレシピ. */
 export function recipeBoost(state: GameState): number {
-  return 1 + state.recipes * 0.01;
+  return 1 + state.recipes * recipePercent(state) * 0.01;
+}
+
+export function recipePercent(state: GameState): number {
+  return hasSkill(state, 'kiseki') ? 2 : 1;
 }
 
 /** Gyoza per recipe grows as a cube, so each next one takes more baking. */
@@ -495,7 +503,100 @@ export function rebirth(state: GameState, now: number): GameState | null {
     recipes: recipesEarned(state),
     lifetimeBaked: state.lifetimeBaked + state.baked,
     keptAchievements: [...earnedAchievements(state)],
+    skills: state.skills,
   };
+}
+
+/**
+ * 餃子の道: three paths of skills bought with recipes. Each path starts at one
+ * skill, branches in two, and each branch ends in a big one. Learned skills
+ * last for good; the recipes spent still count toward the +1% boost.
+ */
+export const SKILL_PATHS = [
+  { id: 'tezutsumi', name: '手包みの道', subtitle: 'クリックを極める', badge: 'skill-path-tezutsumi', icon: 'skill-cat-click' },
+  { id: 'shokunin', name: '職人の道', subtitle: '放置で生産を広げる', badge: 'skill-path-shokunin', icon: 'skill-cat-seisan' },
+  { id: 'hiden', name: '秘伝の道', subtitle: '運と金の餃子を味方に', badge: 'skill-path-hiden', icon: 'skill-cat-un' },
+] as const;
+
+export type SkillPathId = (typeof SKILL_PATHS)[number]['id'];
+
+export type Skill = {
+  id: string;
+  path: SkillPathId;
+  name: string;
+  description: string;
+  cost: number;
+  /** The skill that must be learned first, if any. */
+  requires: string | null;
+};
+
+export const SKILLS: readonly Skill[] = [
+  { id: 'kogane', path: 'tezutsumi', name: '黄金の指先', description: 'クリックで焼ける餃子が25%増える', cost: 10, requires: null },
+  { id: 'hyakuretsu', path: 'tezutsumi', name: '百裂餃子拳', description: 'クリックで焼ける餃子が2倍', cost: 50, requires: 'kogane' },
+  { id: 'shinsoku', path: 'tezutsumi', name: '神速の包み', description: 'クリックに毎秒の生産の3%が上乗せされる', cost: 100, requires: 'kogane' },
+  { id: 'mugen', path: 'tezutsumi', name: '無限包み', description: 'クリックで焼ける餃子が5倍', cost: 300, requires: 'hyakuretsu' },
+  { id: 'sennin', path: 'tezutsumi', name: '餃子仙人', description: 'クリックで焼ける餃子が10倍', cost: 800, requires: 'shinsoku' },
+  { id: 'fumin', path: 'shokunin', name: '不眠不休', description: '毎秒の生産が25%増える', cost: 10, requires: null },
+  { id: 'kouritsu', path: 'shokunin', name: '自動効率化', description: '設備の値段が10%安くなる', cost: 50, requires: 'fumin' },
+  { id: 'tairyou', path: 'shokunin', name: '大量生産', description: '毎秒の生産が2倍', cost: 100, requires: 'fumin' },
+  { id: 'eikyu', path: 'shokunin', name: '永久機関', description: '毎秒の生産が3倍', cost: 300, requires: 'kouritsu' },
+  { id: 'tokuiten', path: 'shokunin', name: '餃子特異点', description: '毎秒の生産が10倍', cost: 800, requires: 'tairyou' },
+  { id: 'kounira', path: 'hiden', name: '幸運のニラ', description: '金の餃子が1.5倍よく出てくる', cost: 10, requires: null },
+  { id: 'michibiki', path: 'hiden', name: '黄金餃子の導き', description: '金の餃子の効果が1.5倍長く続く', cost: 50, requires: 'kounira' },
+  { id: 'zukan', path: 'hiden', name: 'レア餃子図鑑', description: '「神の手」が3倍出やすくなる', cost: 100, requires: 'kounira' },
+  { id: 'daifever', path: 'hiden', name: '大フィーバー', description: '焼きたてラッシュが7倍から15倍になる', cost: 300, requires: 'michibiki' },
+  { id: 'kiseki', path: 'hiden', name: '奇跡のレシピ', description: '秘伝のレシピ1つの効果が+1%から+2%になる', cost: 800, requires: 'zukan' },
+];
+
+const SKILL_BY_ID = new Map(SKILLS.map((s) => [s.id, s]));
+
+export function hasSkill(state: GameState, id: string): boolean {
+  return state.skills.includes(id);
+}
+
+/** Recipes not yet spent on skills. */
+export function usableRecipes(state: GameState): number {
+  const spent = state.skills.reduce((sum, id) => sum + (SKILL_BY_ID.get(id)?.cost ?? 0), 0);
+  return Math.max(0, state.recipes - spent);
+}
+
+/** 'done' learned, 'ready' learnable now, 'open' unlocked but short of recipes, 'locked' needs the one before. */
+export function skillStatus(state: GameState, skill: Skill): 'done' | 'ready' | 'open' | 'locked' {
+  if (hasSkill(state, skill.id)) return 'done';
+  if (skill.requires && !hasSkill(state, skill.requires)) return 'locked';
+  return usableRecipes(state) >= skill.cost ? 'ready' : 'open';
+}
+
+/** Returns the state after learning skill `id`, or null when it can't be. */
+export function learnSkill(state: GameState, id: string): GameState | null {
+  const skill = SKILL_BY_ID.get(id);
+  if (!skill || skillStatus(state, skill) !== 'ready') return null;
+  return { ...state, skills: [...state.skills, id] };
+}
+
+/** What 職人の道 multiplies production by. */
+export function skillProductionBoost(state: GameState): number {
+  return (
+    (hasSkill(state, 'fumin') ? 1.25 : 1) *
+    (hasSkill(state, 'tairyou') ? 2 : 1) *
+    (hasSkill(state, 'eikyu') ? 3 : 1) *
+    (hasSkill(state, 'tokuiten') ? 10 : 1)
+  );
+}
+
+/** What 手包みの道 multiplies clicks by. */
+export function skillClickBoost(state: GameState): number {
+  return (
+    (hasSkill(state, 'kogane') ? 1.25 : 1) *
+    (hasSkill(state, 'hyakuretsu') ? 2 : 1) *
+    (hasSkill(state, 'mugen') ? 5 : 1) *
+    (hasSkill(state, 'sennin') ? 10 : 1)
+  );
+}
+
+/** Building prices after 自動効率化. */
+export function priceFactor(state: GameState): number {
+  return hasSkill(state, 'kouritsu') ? 0.9 : 1;
 }
 
 function add(state: GameState, n: number): GameState {
@@ -562,9 +663,9 @@ export type Buff = { kind: 'frenzy' | 'clickFrenzy'; until: number };
 export const GOLDEN_STAY_MS = 13_000;
 const GOLDEN_WAIT_MS = { min: 60_000, max: 180_000 } as const;
 
-/** The wait before the next golden gyoza, halved by 餃子の妖精. */
+/** The wait before the next golden gyoza, halved by 餃子の妖精 and shortened by 幸運のニラ. */
 export function goldenWaitMs(state: GameState): { min: number; max: number } {
-  const div = has(state, 'goldenOften') > 0 ? 2 : 1;
+  const div = (has(state, 'goldenOften') > 0 ? 2 : 1) * (hasSkill(state, 'kounira') ? 1.5 : 1);
   return { min: GOLDEN_WAIT_MS.min / div, max: GOLDEN_WAIT_MS.max / div };
 }
 
@@ -574,7 +675,8 @@ function buffActive(state: GameState, kind: Buff['kind'], at: number): boolean {
 
 /** The production multiplier buffs give at time `at`. */
 export function productionBoost(state: GameState, at: number): number {
-  return buffActive(state, 'frenzy', at) ? 7 : 1;
+  if (!buffActive(state, 'frenzy', at)) return 1;
+  return hasSkill(state, 'daifever') ? 15 : 7;
 }
 
 /** Per second right now, golden gyoza buffs included. */
@@ -582,17 +684,24 @@ export function currentPerSecond(state: GameState, now: number): number {
   return perSecond(state) * productionBoost(state, now);
 }
 
-/** How long a buff lasts, doubled by にんにくパワー. */
+/** How long a buff lasts, doubled by にんにくパワー and ×1.5 by 黄金餃子の導き. */
 export function buffSeconds(state: GameState, effect: GoldenEffect): number {
-  return effect.seconds * (has(state, 'goldenLonger') > 0 ? 2 : 1);
+  return (
+    effect.seconds * (has(state, 'goldenLonger') > 0 ? 2 : 1) * (hasSkill(state, 'michibiki') ? 1.5 : 1)
+  );
+}
+
+/** How often `effect` is drawn; レア餃子図鑑 makes 神の手 three times likelier. */
+function goldenWeight(state: GameState | null, effect: GoldenEffect): number {
+  return effect.kind === 'clickFrenzy' && state && hasSkill(state, 'zukan') ? effect.weight * 3 : effect.weight;
 }
 
 /** Picks an effect from `roll` in [0, 1), so the game stays free of randomness. */
-export function pickGoldenEffect(roll: number): GoldenEffect {
-  const total = GOLDEN_EFFECTS.reduce((sum, e) => sum + e.weight, 0);
+export function pickGoldenEffect(roll: number, state: GameState | null = null): GoldenEffect {
+  const total = GOLDEN_EFFECTS.reduce((sum, e) => sum + goldenWeight(state, e), 0);
   let left = roll * total;
   for (const e of GOLDEN_EFFECTS) {
-    left -= e.weight;
+    left -= goldenWeight(state, e);
     if (left < 0) return e;
   }
   return GOLDEN_EFFECTS[0];
@@ -645,10 +754,16 @@ export function tezukuriClickShare(state: GameState): number {
 export function perClick(state: GameState): number {
   const ups = bought(state);
   const doubles = ups.filter((u) => u.kind === 'clickDouble').length;
-  const share = ups.reduce((sum, u) => sum + (u.kind === 'clickRate' ? u.share : 0), 0);
+  const share =
+    ups.reduce((sum, u) => sum + (u.kind === 'clickRate' ? u.share : 0), 0) +
+    (hasSkill(state, 'shinsoku') ? 0.03 : 0);
   const base = 1 + state.owned.tezukuri * tezukuriClickShare(state);
   const clickBoost = buffActive(state, 'clickFrenzy', state.at) ? 777 : 1;
-  return (base * 2 ** doubles * recipeBoost(state) + currentPerSecond(state, state.at) * share) * clickBoost;
+  return (
+    (base * 2 ** doubles * recipeBoost(state) + currentPerSecond(state, state.at) * share) *
+    skillClickBoost(state) *
+    clickBoost
+  );
 }
 
 export function click(state: GameState): GameState {
@@ -657,9 +772,9 @@ export function click(state: GameState): GameState {
 }
 
 /** What the next `count` of a building cost together, each priced as it's bought. */
-export function costOf(building: Building, owned: number, count: number): number {
+export function costOf(building: Building, owned: number, count: number, factor = 1): number {
   let total = 0;
-  for (let i = 0; i < count; i++) total += cost(building, owned + i);
+  for (let i = 0; i < count; i++) total += cost(building, owned + i, factor);
   return total;
 }
 
@@ -668,7 +783,7 @@ export function affordableCount(state: GameState, building: Building): number {
   let count = 0;
   let total = 0;
   while (true) {
-    total += cost(building, state.owned[building.id] + count);
+    total += cost(building, state.owned[building.id] + count, priceFactor(state));
     if (total > state.gyoza) return Math.max(1, count);
     count++;
   }
@@ -677,7 +792,7 @@ export function affordableCount(state: GameState, building: Building): number {
 /** Returns the state after buying `count` of `id`, or null when they can't be afforded. */
 export function buy(state: GameState, id: BuildingId, count = 1): GameState | null {
   const building = BUILDINGS.find((b) => b.id === id)!;
-  const price = costOf(building, state.owned[id], count);
+  const price = costOf(building, state.owned[id], count, priceFactor(state));
   if (count < 1 || state.gyoza < price) return null;
   return {
     ...state,
@@ -755,6 +870,9 @@ export function load(json: string | null, now: number): GameState {
       lifetimeBaked: num(saved.lifetimeBaked, 0),
       keptAchievements: Array.isArray(saved.keptAchievements)
         ? saved.keptAchievements.filter((id) => typeof id === 'string')
+        : [],
+      skills: Array.isArray(saved.skills)
+        ? [...new Set(saved.skills.filter((id) => typeof id === 'string' && SKILL_BY_ID.has(id)))]
         : [],
       at: Math.min(num(saved.at, now), now),
     };
@@ -854,6 +972,9 @@ export const ACHIEVEMENTS: readonly {
   { id: 'goldenAll', name: '全種類の餃子を集めた', description: '金の餃子の効果を4種類すべて見た', icon: 'ach-allgolden', earned: (s) => GOLDEN_EFFECTS.every((e) => s.goldenSeen.includes(e.kind)) },
   { id: 'rebirth1', name: 'のれん分け', description: 'はじめてのれん分けをした', icon: 'bonus-crown', earned: (s) => s.rebirths >= 1 },
   { id: 'rebirth10', name: '餃子の家元', description: 'のれん分けを10回した', icon: 'ach-kami', earned: (s) => s.rebirths >= 10 },
+  { id: 'skill1', name: '餃子の道へ', description: 'スキルをはじめて習得した', icon: 'skill-cat-recipe', earned: (s) => s.skills.length >= 1 },
+  { id: 'skillPath', name: '道を極めた', description: 'ひとつの道のスキルをすべて習得した', icon: 'skill-cat-special', earned: (s) => SKILL_PATHS.some((p) => SKILLS.filter((k) => k.path === p.id).every((k) => s.skills.includes(k.id))) },
+  { id: 'skillAll', name: '餃子の道を究めた', description: 'スキルをすべて習得した', icon: 'skill-cat-final', earned: (s) => SKILLS.every((k) => s.skills.includes(k.id)) },
   { id: 'sukkarakan', name: 'すっからかん', description: '餃子を使い切って、手持ちがぴったり0個になった', icon: 'ach-hidden', hidden: true, earned: (s) => s.baked >= 1_000 && s.gyoza < 1 },
 ];
 

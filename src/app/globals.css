@@ -97,8 +97,19 @@ body {
   animation: gyoza-golden 13s ease-in-out forwards;
 }
 
+/* Gyoza Clicker: a skill that can be learned now glows softly. */
+@keyframes gyoza-ready {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(245 158 11 / 0.6); }
+  50% { box-shadow: 0 0 0 6px rgb(245 158 11 / 0); }
+}
+
+.gyoza-ready {
+  animation: gyoza-ready 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .gyoza-golden {
+  .gyoza-golden,
+  .gyoza-ready {
     animation: none;
   }
 }
