@@ -7,6 +7,11 @@
 @source '../../node_modules/@kazamitte/design-token';
 @source '../../packages/ui/src';
 
+/* Keep room for the scrollbar so pages don't jump sideways when it comes and goes. */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   background-color: var(--r-base-bg);
   color: var(--r-base-fg);

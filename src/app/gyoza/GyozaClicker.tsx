@@ -194,7 +194,7 @@ export function GyozaClicker() {
 
   return (
     <div
-      className="min-h-dvh bg-cover bg-center"
+      className="min-h-dvh bg-cover bg-fixed bg-center"
       style={{ backgroundImage: 'url(/gyoza/background-shop.webp)' }}
     >
       <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 md:grid-cols-[1fr_26rem] md:py-10">
@@ -287,16 +287,19 @@ export function GyozaClicker() {
                   </li>
                 ))}
               </ul>
+              {/* Fixed height so hovering a different upgrade never shifts the page. */}
               {shownUpgrade && (
-                <p className="mt-2 text-sm">
-                  <span className="font-bold">{shownUpgrade.name}</span>
-                  <span className="ml-2 text-stone-600">{shownUpgrade.description}</span>
-                  <span
-                    className={`ml-2 font-bold tabular-nums ${state.gyoza >= shownUpgrade.cost ? 'text-amber-700' : 'text-stone-500'}`}
-                  >
-                    {format(shownUpgrade.cost)}個
-                  </span>
-                </p>
+                <div className="mt-2 h-10 text-sm leading-5">
+                  <p className="flex gap-2">
+                    <span className="truncate font-bold">{shownUpgrade.name}</span>
+                    <span
+                      className={`ml-auto shrink-0 font-bold tabular-nums ${state.gyoza >= shownUpgrade.cost ? 'text-amber-700' : 'text-stone-500'}`}
+                    >
+                      {format(shownUpgrade.cost)}個
+                    </span>
+                  </p>
+                  <p className="truncate text-stone-600">{shownUpgrade.description}</p>
+                </div>
               )}
             </div>
           )}
