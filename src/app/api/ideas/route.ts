@@ -1,3 +1,4 @@
+import { CURRENT_ROUND } from '@/lib/challenge';
 import { addIdea, getState, setIdeaStatus, voteIdea } from '@/lib/db';
 import { badRequest, guardWrite, isAdmin, isJson } from '@/lib/guard';
 import { ideaSchema, parseBody } from '@/lib/schema';
@@ -12,7 +13,7 @@ export async function POST(req: Request) {
     case 'add': {
       const blocked = await guardWrite(req, 'idea-add', 5);
       if (blocked) return blocked;
-      await addIdea(data.title);
+      await addIdea(CURRENT_ROUND.round, data.title);
       break;
     }
     case 'vote': {
@@ -21,15 +22,15 @@ export async function POST(req: Request) {
         (await guardWrite(req, 'vote', 30)) ??
         (await guardWrite(req, `vote:${data.id}`, 1, 3600));
       if (blocked) return blocked;
-      await voteIdea(data.id);
+      await voteIdea(CURRENT_ROUND.round, data.id);
       break;
     }
     case 'status': {
       if (!isAdmin(req)) return badRequest('unauthorized', 401);
-      await setIdeaStatus(data.id, data.status);
+      await setIdeaStatus(CURRENT_ROUND.round, data.id, data.status);
       break;
     }
   }
 
-  return Response.json(await getState());
+  return Response.json(await getState(CURRENT_ROUND.round));
 }

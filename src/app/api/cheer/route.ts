@@ -1,3 +1,4 @@
+import { CURRENT_ROUND } from '@/lib/challenge';
 import { addCheer, addQuickCheers, getState } from '@/lib/db';
 import { guardWrite } from '@/lib/guard';
 import { cheerSchema, parseBody } from '@/lib/schema';
@@ -12,10 +13,10 @@ export async function POST(req: Request) {
 
   let postedId: number | undefined;
   if (message) {
-    postedId = await addCheer(name || '名無しさん', message);
+    postedId = await addCheer(CURRENT_ROUND.round, name || '名無しさん', message);
   } else {
-    await addQuickCheers(times);
+    await addQuickCheers(CURRENT_ROUND.round, times);
   }
   // Fresh state, so the poster sees their cheer despite the cached GET.
-  return Response.json({ ...(await getState()), postedId });
+  return Response.json({ ...(await getState(CURRENT_ROUND.round)), postedId });
 }

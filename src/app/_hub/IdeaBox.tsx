@@ -7,7 +7,10 @@ import { toaster } from './toaster';
 
 const VOTED_KEY = 'voted-ideas';
 
-const STATUS_BADGE: Record<Exclude<IdeaStatus, 'open'>, { label: string; tone: 'primary' | 'success' | 'base' }> = {
+const STATUS_BADGE: Record<
+  Exclude<IdeaStatus, 'open'>,
+  { label: string; tone: 'primary' | 'success' | 'base' }
+> = {
   adopted: { label: '実装中', tone: 'primary' },
   done: { label: '実装済み', tone: 'success' },
   rejected: { label: '見送り', tone: 'base' },
@@ -32,10 +35,12 @@ function saveVoted(voted: Set<number>) {
 export function IdeaBox({
   ideas,
   adminToken,
+  readOnly,
   onUpdated,
 }: {
   ideas: Idea[];
   adminToken: string | null;
+  readOnly: boolean;
   onUpdated: (state: ChallengeState) => void;
 }) {
   const [title, setTitle] = useState('');
@@ -95,32 +100,40 @@ export function IdeaBox({
       <Card.Header>
         <Card.Title>💡 次に作る機能の投票箱</Card.Title>
         <Card.Description>
-          一番票を集めた機能を、残り時間で実装します。アイデアの投稿と投票はどなたでもどうぞ
+          {readOnly
+            ? 'この回に集まったアイデアと投票の結果です'
+            : '一番票を集めた機能を、残り時間で実装します。アイデアの投稿と投票はどなたでもどうぞ'}
         </Card.Description>
       </Card.Header>
       <Card.Body>
         <Stack gap={6}>
-          <form onSubmit={submit}>
-            <Stack direction="row" gap={2} align="end">
-              <div className="flex-1">
-                <Field.Root>
-                  <Field.Label>機能のアイデア</Field.Label>
-                  <Field.Input
-                    value={title}
-                    maxLength={60}
-                    placeholder="例：ダークモード"
-                    onChange={(e) => setTitle(e.target.value)}
-                  />
-                </Field.Root>
-              </div>
-              <Button type="submit" disabled={busy || !title.trim()}>
-                投稿
-              </Button>
-            </Stack>
-          </form>
+          {!readOnly && (
+            <form onSubmit={submit}>
+              <Stack direction="row" gap={2} align="end">
+                <div className="flex-1">
+                  <Field.Root>
+                    <Field.Label>機能のアイデア</Field.Label>
+                    <Field.Input
+                      value={title}
+                      maxLength={60}
+                      placeholder="例：ダークモード"
+                      onChange={(e) => setTitle(e.target.value)}
+                    />
+                  </Field.Root>
+                </div>
+                <Button type="submit" disabled={busy || !title.trim()}>
+                  投稿
+                </Button>
+              </Stack>
+            </form>
+          )}
 
           {ideas.length === 0 ? (
-            <Text tone="muted">まだアイデアはありません。最初のひとつをどうぞ！</Text>
+            <Text tone="muted">
+              {readOnly
+                ? 'アイデアはありませんでした'
+                : 'まだアイデアはありません。最初のひとつをどうぞ！'}
+            </Text>
           ) : (
             <ol className="flex flex-col gap-2">
               {ideas.map((idea) => {
@@ -145,7 +158,7 @@ export function IdeaBox({
                         )}
                       </Stack>
                       <Stack direction="row" gap={1} align="center">
-                        {idea.status === 'open' && (
+                        {idea.status === 'open' && !readOnly && (
                           <Button
                             size="sm"
                             variant={voted.has(idea.id) ? 'ghost' : 'outline'}
@@ -174,13 +187,7 @@ export function IdeaBox({
   );
 }
 
-function AdminStatusButtons({
-  idea,
-  onSet,
-}: {
-  idea: Idea;
-  onSet: (status: IdeaStatus) => void;
-}) {
+function AdminStatusButtons({ idea, onSet }: { idea: Idea; onSet: (status: IdeaStatus) => void }) {
   const next: { status: IdeaStatus; label: string }[] =
     idea.status === 'open'
       ? [

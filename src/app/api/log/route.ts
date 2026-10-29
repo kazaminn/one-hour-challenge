@@ -1,3 +1,4 @@
+import { CURRENT_ROUND } from '@/lib/challenge';
 import { addLog, getState } from '@/lib/db';
 import { badRequest, isAdmin, isJson } from '@/lib/guard';
 import { logSchema, parseBody } from '@/lib/schema';
@@ -9,6 +10,6 @@ export async function POST(req: Request) {
   const parsed = await parseBody(req, logSchema);
   if ('error' in parsed) return parsed.error;
 
-  await addLog(parsed.data.body, parsed.data.milestone);
-  return Response.json(await getState());
+  await addLog(CURRENT_ROUND.round, parsed.data.body, parsed.data.milestone);
+  return Response.json(await getState(CURRENT_ROUND.round));
 }

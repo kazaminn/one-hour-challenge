@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { Button } from '@kazamitte/kazamitte-ui';
-import { THEME_KEY } from './theme';
+import { THEME_KEY } from '../theme';
 
 export function ThemeToggle() {
   const [dark, setDark] = useState<boolean | null>(null);

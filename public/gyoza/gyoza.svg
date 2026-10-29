@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" width="240" height="160" role="img" aria-label="餃子">
+  <!-- 60分チャレンジ用に自作した餃子のイラスト。自由に差し替え・改変してOK -->
+  <defs>
+    <linearGradient id="skin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff8e6"/>
+      <stop offset="0.6" stop-color="#f6e6bd"/>
+      <stop offset="0.78" stop-color="#e9b86a"/>
+      <stop offset="1" stop-color="#b7672a"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="120" cy="140" rx="92" ry="8" fill="#000" opacity="0.12"/>
+  <path d="M16 104 C40 30 200 30 224 104 C214 134 26 134 16 104 Z" fill="url(#skin)" stroke="#8a5528" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M30.0 80.6 Q34.8 69.3 39.5 72.1 Q45.0 61.5 50.5 64.9 Q56.7 54.9 62.9 59.0 Q69.5 49.7 76.2 54.4 Q83.3 45.8 90.4 51.1 Q97.7 43.1 105.1 49.2 Q112.5 41.8 120.0 48.5 Q127.5 41.8 134.9 49.2 Q142.3 43.1 149.6 51.1 Q156.7 45.8 163.8 54.4 Q170.5 49.7 177.1 59.0 Q183.3 54.9 189.5 64.9 Q195.0 61.5 200.5 72.1 Q205.2 69.3 210.0 80.6" fill="none" stroke="#8a5528" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="none" stroke="#c99a5b" stroke-width="2.5" stroke-linecap="round"><path d="M39.5 73.1 q 2.9 6 1.9 13" /><path d="M62.9 60.0 q 2.1 6 1.4 13" /><path d="M90.4 52.1 q 1.1 6 0.7 13" /><path d="M120.0 49.5 q 0.0 6 0.0 13" /><path d="M149.6 52.1 q -1.1 6 -0.7 13" /><path d="M177.1 60.0 q -2.1 6 -1.4 13" /><path d="M200.5 73.1 q -2.9 6 -1.9 13" /></g>
+  <ellipse cx="74" cy="76" rx="16" ry="7" fill="#fff" opacity="0.7" transform="rotate(-28 74 76)"/>
+  <g fill="#5a3514">
+    <circle cx="100" cy="96" r="4.5"/>
+    <circle cx="140" cy="96" r="4.5"/>
+  </g>
+  <path d="M113 103 q7 6 14 0" fill="none" stroke="#5a3514" stroke-width="3" stroke-linecap="round"/>
+  <g fill="#f08a7a" opacity="0.55">
+    <ellipse cx="86" cy="106" rx="8" ry="4.5"/>
+    <ellipse cx="154" cy="106" rx="8" ry="4.5"/>
+  </g>
+</svg>
