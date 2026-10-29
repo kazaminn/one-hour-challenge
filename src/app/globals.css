@@ -44,3 +44,15 @@ body {
     animation: reaction-fade 1.6s linear forwards;
   }
 }
+
+/* Gyoza Clicker: the plate wobbles a little on every click. */
+@keyframes gyoza-wobble {
+  0% { transform: scale(1); }
+  30% { transform: scale(0.92, 1.06); }
+  60% { transform: scale(1.04, 0.96); }
+  100% { transform: scale(1); }
+}
+
+.gyoza-wobble {
+  animation: gyoza-wobble 0.25s ease-out;
+}
