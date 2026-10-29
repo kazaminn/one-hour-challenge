@@ -26,7 +26,7 @@ export const BUILDINGS = [
     name: '餃子の自動製造機',
     counter: '台',
     baseCost: 1_100,
-    perSecond: 10,
+    perSecond: 8,
     flavor: '機械の力で効率アップ。',
   },
   {
@@ -34,24 +34,136 @@ export const BUILDINGS = [
     name: '町の餃子専門店',
     counter: '店舗',
     baseCost: 12_000,
-    perSecond: 100,
+    perSecond: 47,
     flavor: 'いい匂いで人々を惹きつける。',
+  },
+  {
+    id: 'idou',
+    name: '餃子の移動販売車',
+    counter: '台',
+    baseCost: 130_000,
+    perSecond: 260,
+    flavor: '焼きたてを町じゅうに届ける。',
+  },
+  {
+    id: 'central',
+    name: '餃子セントラルキッチン',
+    counter: 'か所',
+    baseCost: 1.4e6,
+    perSecond: 1_400,
+    flavor: '仕込みはまとめて、一気に焼く。',
   },
   {
     id: 'franchise',
     name: '餃子フランチャイズ',
     counter: '社',
-    baseCost: 130_000,
-    perSecond: 1_000,
+    baseCost: 2e7,
+    perSecond: 7_800,
     flavor: '全国に餃子の輪を広げる。',
   },
   {
     id: 'kojo',
-    name: '世界の餃子工場',
+    name: '全自動餃子工場',
     counter: 'か所',
-    baseCost: 1_400_000,
-    perSecond: 10_000,
-    flavor: '世界中に餃子を届けよう。',
+    baseCost: 3.3e8,
+    perSecond: 44_000,
+    flavor: '包むのも焼くのも全自動。',
+  },
+  {
+    id: 'kenkyujo',
+    name: '餃子研究所',
+    counter: 'か所',
+    baseCost: 5.1e9,
+    perSecond: 260_000,
+    flavor: '究極の一個を科学で追い求める。',
+  },
+  {
+    id: 'themepark',
+    name: '餃子テーマパーク',
+    counter: 'か所',
+    baseCost: 7.5e10,
+    perSecond: 1.6e6,
+    flavor: '食べて遊べる餃子の国。',
+  },
+  {
+    id: 'toshi',
+    name: '餃子都市',
+    counter: '都市',
+    baseCost: 1e12,
+    perSecond: 1e7,
+    flavor: 'ビルの上にも餃子が乗っている。',
+  },
+  {
+    id: 'rengo',
+    name: '世界餃子連合',
+    counter: 'か国',
+    baseCost: 1.4e13,
+    perSecond: 6.5e7,
+    flavor: '世界じゅうが餃子で手を結ぶ。',
+  },
+  {
+    id: 'eisei',
+    name: '餃子人工衛星',
+    counter: '機',
+    baseCost: 1.7e14,
+    perSecond: 4.3e8,
+    flavor: '宇宙から餃子の焼き加減を見守る。',
+  },
+  {
+    id: 'getsumen',
+    name: '月面餃子基地',
+    counter: '基',
+    baseCost: 2.1e15,
+    perSecond: 2.9e9,
+    flavor: '重力が軽いので皮もふわふわ。',
+  },
+  {
+    id: 'kasei',
+    name: '火星餃子農園',
+    counter: 'か所',
+    baseCost: 2.6e16,
+    perSecond: 2.1e10,
+    flavor: '赤い大地でニラを育てる。',
+  },
+  {
+    id: 'ginga',
+    name: '銀河餃子帝国',
+    counter: '銀河',
+    baseCost: 3.1e17,
+    perSecond: 1.5e11,
+    flavor: '銀河の果てまで餃子の旗が立つ。',
+  },
+  {
+    id: 'wakusei',
+    name: '餃子惑星',
+    counter: '個',
+    baseCost: 7.1e18,
+    perSecond: 1.1e12,
+    flavor: '星そのものが餃子になった。',
+  },
+  {
+    id: 'blackhole',
+    name: '餃子ブラックホール',
+    counter: '個',
+    baseCost: 1.2e20,
+    perSecond: 8.3e12,
+    flavor: 'あらゆる餃子を引き寄せる。',
+  },
+  {
+    id: 'ryoshi',
+    name: '量子餃子生成装置',
+    counter: '台',
+    baseCost: 1.9e21,
+    perSecond: 6.4e13,
+    flavor: '焼けている餃子と焼けていない餃子が重なり合う。',
+  },
+  {
+    id: 'jiku',
+    name: '時空餃子転送門',
+    counter: '門',
+    baseCost: 5.4e22,
+    perSecond: 5e14,
+    flavor: '過去と未来の餃子をここへ。',
   },
 ] as const;
 
@@ -120,13 +232,27 @@ export type Upgrade = {
   name: string;
   description: string;
   cost: number;
+  /** Image under /gyoza/. */
+  icon: string;
   /** Shows in the shop once this holds; it stays bought after that. */
   unlocked: (state: GameState) => boolean;
 } & (
   | { kind: 'building'; building: BuildingId }
   | { kind: 'clickDouble' }
   | { kind: 'clickRate'; share: number }
+  | { kind: 'global' }
+  | { kind: 'goldenLonger' }
+  | { kind: 'goldenOften' }
 );
+
+/** Building upgrades borrow an item from the sheet where one fits, else the building itself. */
+const TIER_ICON: Partial<Record<BuildingId, string>> = {
+  tezukuri: 'upgrade-kawa',
+  shokunin: 'upgrade-hachimaki',
+  kikai: 'upgrade-aichip',
+  kojo: 'upgrade-aichip',
+  kenkyujo: 'upgrade-aichip',
+};
 
 /** Owned counts that unlock each tier of a building's upgrades, and the price as a multiple of its base cost. */
 const BUILDING_TIERS = [
@@ -142,26 +268,65 @@ export const UPGRADES: readonly Upgrade[] = [
   {
     id: 'click1',
     kind: 'clickDouble',
-    name: '焼き上手',
+    name: '魔法の麺棒',
     description: 'クリックで焼ける数が2倍',
     cost: 100,
+    icon: 'upgrade-menbou',
     unlocked: (s) => s.baked >= 50,
   },
   {
     id: 'click2',
     kind: 'clickDouble',
-    name: 'フライパン二刀流',
+    name: '特製ラー油',
     description: 'クリックで焼ける数が2倍',
     cost: 500,
+    icon: 'upgrade-rayu',
     unlocked: (s) => s.owned.tezukuri >= 1,
   },
   {
     id: 'click3',
     kind: 'clickDouble',
-    name: '高速返し',
+    name: '黄金のフライパン',
     description: 'クリックで焼ける数が2倍',
     cost: 10_000,
+    icon: 'upgrade-frypan',
     unlocked: (s) => s.owned.tezukuri >= 10,
+  },
+  {
+    id: 'nira',
+    kind: 'global',
+    name: '極上のニラ',
+    description: 'すべての設備の生産が2倍',
+    cost: 1e6,
+    icon: 'upgrade-nira',
+    unlocked: (s) => s.baked >= 1e5,
+  },
+  {
+    id: 'jitan',
+    kind: 'global',
+    name: '時短マシン',
+    description: 'すべての設備の生産が2倍',
+    cost: 1e10,
+    icon: 'upgrade-jitan',
+    unlocked: (s) => s.baked >= 1e9,
+  },
+  {
+    id: 'ninniku',
+    kind: 'goldenLonger',
+    name: 'にんにくパワー',
+    description: '金の餃子の効果が2倍長く続く',
+    cost: 77_777,
+    icon: 'upgrade-ninniku',
+    unlocked: (s) => s.goldenClicks >= 3,
+  },
+  {
+    id: 'yousei',
+    kind: 'goldenOften',
+    name: '餃子の妖精',
+    description: '金の餃子が2倍の頻度で出る',
+    cost: 777_777,
+    icon: 'upgrade-yousei',
+    unlocked: (s) => s.goldenClicks >= 7,
   },
   ...(
     [
@@ -179,6 +344,7 @@ export const UPGRADES: readonly Upgrade[] = [
       name,
       description: 'クリックごとに毎秒の生産の1%も焼ける',
       cost,
+      icon: 'gyoza-click',
       unlocked: (s) => s.baked >= need,
     }),
   ),
@@ -191,6 +357,7 @@ export const UPGRADES: readonly Upgrade[] = [
         name: `${b.name}・${t.name}`,
         description: `${b.name}の生産が2倍`,
         cost: b.baseCost * t.price,
+        icon: TIER_ICON[b.id] ?? `building-${b.id}`,
         unlocked: (s) => s.owned[b.id] >= t.owned,
       }),
     ),
@@ -217,9 +384,14 @@ export function buyUpgrade(state: GameState, id: string): GameState | null {
   return { ...state, gyoza: state.gyoza - upgrade.cost, upgrades: [...state.upgrades, id] };
 }
 
-/** The multiplier bought upgrades give `building`. */
+function has(state: GameState, kind: Upgrade['kind']): number {
+  return bought(state).filter((u) => u.kind === kind).length;
+}
+
+/** The multiplier bought upgrades give `building`, including the ones for every building. */
 export function upgradeMultiplier(state: GameState, building: BuildingId): number {
-  return 2 ** bought(state).filter((u) => u.kind === 'building' && u.building === building).length;
+  const own = bought(state).filter((u) => u.kind === 'building' && u.building === building).length;
+  return 2 ** (own + has(state, 'global'));
 }
 
 /** What one of `building` bakes per second right now, bonuses and upgrades included. */
@@ -256,32 +428,32 @@ export function tick(state: GameState, now: number): GameState {
 export const GOLDEN_EFFECTS = [
   {
     kind: 'frenzy',
+    image: 'bonus-fire',
     name: '焼きたてラッシュ',
-    icon: '🔥',
     description: '77秒間、毎秒の生産が7倍',
     seconds: 77,
     weight: 4,
   },
   {
     kind: 'clickFrenzy',
+    image: 'bonus-bolt',
     name: '神の手',
-    icon: '⚡',
     description: '13秒間、クリックが777倍',
     seconds: 13,
     weight: 1,
   },
   {
     kind: 'lucky',
+    image: 'bonus-clover',
     name: '幸運の餃子',
-    icon: '🍀',
     description: '手持ちの15%か、生産15分ぶんの少ないほうをもらえる',
     seconds: 0,
     weight: 4,
   },
   {
     kind: 'timeSkip',
+    image: 'bonus-clock',
     name: '時間を先取り',
-    icon: '⏱️',
     description: '生産5分ぶんをすぐもらえる',
     seconds: 0,
     weight: 2,
@@ -293,7 +465,13 @@ export type Buff = { kind: 'frenzy' | 'clickFrenzy'; until: number };
 
 /** How long a golden gyoza stays on screen, and the wait before the next one. */
 export const GOLDEN_STAY_MS = 13_000;
-export const GOLDEN_WAIT_MS = { min: 60_000, max: 180_000 } as const;
+const GOLDEN_WAIT_MS = { min: 60_000, max: 180_000 } as const;
+
+/** The wait before the next golden gyoza, halved by 餃子の妖精. */
+export function goldenWaitMs(state: GameState): { min: number; max: number } {
+  const div = has(state, 'goldenOften') > 0 ? 2 : 1;
+  return { min: GOLDEN_WAIT_MS.min / div, max: GOLDEN_WAIT_MS.max / div };
+}
 
 function buffActive(state: GameState, kind: Buff['kind'], at: number): boolean {
   return state.buffs.some((b) => b.kind === kind && b.until > at);
@@ -307,6 +485,11 @@ export function productionBoost(state: GameState, at: number): number {
 /** Per second right now, golden gyoza buffs included. */
 export function currentPerSecond(state: GameState, now: number): number {
   return perSecond(state) * productionBoost(state, now);
+}
+
+/** How long a buff lasts, doubled by にんにくパワー. */
+export function buffSeconds(state: GameState, effect: GoldenEffect): number {
+  return effect.seconds * (has(state, 'goldenLonger') > 0 ? 2 : 1);
 }
 
 /** Picks an effect from `roll` in [0, 1), so the game stays free of randomness. */
@@ -331,7 +514,7 @@ export function goldenClick(
     // A second one of the same kind restarts the timer instead of stacking.
     const buffs = counted.buffs.filter((b) => b.kind !== effect.kind);
     return {
-      state: { ...counted, buffs: [...buffs, { kind: effect.kind, until: now + effect.seconds * 1000 }] },
+      state: { ...counted, buffs: [...buffs, { kind: effect.kind, until: now + buffSeconds(state, effect) * 1000 }] },
       gained: 0,
     };
   }
@@ -447,6 +630,14 @@ export function load(json: string | null, now: number): GameState {
 }
 
 const JA_UNITS = [
+  [1e44, '載'],
+  [1e40, '正'],
+  [1e36, '澗'],
+  [1e32, '溝'],
+  [1e28, '穣'],
+  [1e24, '𥝱'],
+  [1e20, '垓'],
+  [1e16, '京'],
   [1e12, '兆'],
   [1e8, '億'],
   [1e4, '万'],
@@ -474,28 +665,38 @@ export const ACHIEVEMENTS: readonly {
   id: string;
   name: string;
   description: string;
+  /** Image under /gyoza/. */
+  icon: string;
   earned: (state: GameState) => boolean;
 }[] = [
-  { id: 'baked1', name: 'はじめの一個', description: '餃子を1個焼いた', earned: (s) => s.baked >= 1 },
-  { id: 'baked100', name: '焼き手見習い', description: '餃子を100個焼いた', earned: (s) => s.baked >= 100 },
-  { id: 'baked1k', name: '焼き場の常連', description: '餃子を1,000個焼いた', earned: (s) => s.baked >= 1_000 },
-  { id: 'baked10k', name: '一万個の壁', description: '餃子を1万個焼いた', earned: (s) => s.baked >= 1e4 },
-  { id: 'baked1m', name: '餃子長者', description: '餃子を100万個焼いた', earned: (s) => s.baked >= 1e6 },
-  { id: 'baked100m', name: '餃子の星', description: '餃子を1億個焼いた', earned: (s) => s.baked >= 1e8 },
-  { id: 'shokunin1', name: 'いらっしゃい、おじさん', description: '餃子職人のおじさんを雇った', earned: (s) => s.owned.shokunin >= 1 },
-  { id: 'shokunin10', name: '職人チーム', description: '餃子職人のおじさんを10人雇った', earned: (s) => s.owned.shokunin >= 10 },
-  { id: 'kikai1', name: '機械化', description: '餃子の自動製造機を導入した', earned: (s) => s.owned.kikai >= 1 },
-  { id: 'senmonten1', name: '開店！', description: '町の餃子専門店を開いた', earned: (s) => s.owned.senmonten >= 1 },
-  { id: 'franchise1', name: '全国進出', description: '餃子フランチャイズを始めた', earned: (s) => s.owned.franchise >= 1 },
-  { id: 'kojo1', name: '世界の餃子', description: '世界の餃子工場を建てた', earned: (s) => s.owned.kojo >= 1 },
-  { id: 'rate10', name: '自動で焼ける', description: '毎秒10個焼けるようになった', earned: (s) => perSecond(s) >= 10 },
-  { id: 'rate1k', name: '餃子の滝', description: '毎秒1,000個焼けるようになった', earned: (s) => perSecond(s) >= 1_000 },
-  { id: 'upgrade1', name: 'ひと工夫', description: '強化を1つ買った', earned: (s) => s.upgrades.length >= 1 },
-  { id: 'upgrade10', name: '研究熱心', description: '強化を10個買った', earned: (s) => s.upgrades.length >= 10 },
-  { id: 'golden1', name: '金色の出会い', description: '金の餃子を1回つかまえた', earned: (s) => s.goldenClicks >= 1 },
-  { id: 'golden7', name: 'ラッキーセブン', description: '金の餃子を7回つかまえた', earned: (s) => s.goldenClicks >= 7 },
-  { id: 'golden77', name: '金の餃子ハンター', description: '金の餃子を77回つかまえた', earned: (s) => s.goldenClicks >= 77 },
-  { id: 'upgrade25', name: '餃子研究家', description: '強化を25個買った', earned: (s) => s.upgrades.length >= 25 },
+  { id: 'baked1', name: 'はじめの一個', description: '餃子を1個焼いた', icon: 'ach-baked1', earned: (s) => s.baked >= 1 },
+  { id: 'baked100', name: '焼き手見習い', description: '餃子を100個焼いた', icon: 'ach-baked100', earned: (s) => s.baked >= 100 },
+  { id: 'baked1k', name: '焼き場の常連', description: '餃子を1,000個焼いた', icon: 'ach-baked1k', earned: (s) => s.baked >= 1_000 },
+  { id: 'baked10k', name: '一万個の壁', description: '餃子を1万個焼いた', icon: 'ach-baked10k', earned: (s) => s.baked >= 1e4 },
+  { id: 'baked100k', name: '十万個の山', description: '餃子を10万個焼いた', icon: 'ach-baked100k', earned: (s) => s.baked >= 1e5 },
+  { id: 'baked1m', name: '餃子長者', description: '餃子を100万個焼いた', icon: 'ach-baked1m', earned: (s) => s.baked >= 1e6 },
+  { id: 'baked100m', name: '餃子の星', description: '餃子を1億個焼いた', icon: 'ach-baked1m', earned: (s) => s.baked >= 1e8 },
+  { id: 'baked1t', name: '餃子の神', description: '餃子を1兆個焼いた', icon: 'ach-kami', earned: (s) => s.baked >= 1e12 },
+  { id: 'baked1kei', name: '餃子の創造主', description: '餃子を1京個焼いた', icon: 'ach-kami', earned: (s) => s.baked >= 1e16 },
+  { id: 'shokunin1', name: 'いらっしゃい、おじさん', description: '餃子職人のおじさんを雇った', icon: 'ach-shokunin', earned: (s) => s.owned.shokunin >= 1 },
+  { id: 'shokunin10', name: '職人チーム', description: '餃子職人のおじさんを10人雇った', icon: 'ach-shokunin', earned: (s) => s.owned.shokunin >= 10 },
+  { id: 'kikai1', name: '機械化', description: '餃子の自動製造機を導入した', icon: 'ach-kojo', earned: (s) => s.owned.kikai >= 1 },
+  { id: 'senmonten1', name: '開店！', description: '町の餃子専門店を開いた', icon: 'ach-mise', earned: (s) => s.owned.senmonten >= 1 },
+  { id: 'franchise1', name: '全国進出', description: '餃子フランチャイズを始めた', icon: 'ach-mise', earned: (s) => s.owned.franchise >= 1 },
+  { id: 'kojo1', name: '工場をつくる', description: '全自動餃子工場を建てた', icon: 'ach-kojo', earned: (s) => s.owned.kojo >= 1 },
+  { id: 'rengo1', name: '世界に広げる', description: '世界餃子連合を結成した', icon: 'ach-sekai', earned: (s) => s.owned.rengo >= 1 },
+  { id: 'eisei1', name: '宇宙進出', description: '餃子人工衛星を打ち上げた', icon: 'ach-uchu', earned: (s) => s.owned.eisei >= 1 },
+  { id: 'ginga1', name: '銀河の覇者', description: '銀河餃子帝国を築いた', icon: 'ach-uchu', earned: (s) => s.owned.ginga >= 1 },
+  { id: 'jiku1', name: '時空を超えて', description: '時空餃子転送門を開いた', icon: 'ach-kami', earned: (s) => s.owned.jiku >= 1 },
+  { id: 'rate10', name: '自動で焼ける', description: '毎秒10個焼けるようになった', icon: 'ach-baked100', earned: (s) => perSecond(s) >= 10 },
+  { id: 'rate1k', name: '餃子の滝', description: '毎秒1,000個焼けるようになった', icon: 'ach-baked10k', earned: (s) => perSecond(s) >= 1_000 },
+  { id: 'rate1m', name: '餃子の大河', description: '毎秒100万個焼けるようになった', icon: 'ach-baked1m', earned: (s) => perSecond(s) >= 1e6 },
+  { id: 'upgrade1', name: 'ひと工夫', description: '強化を1つ買った', icon: 'upgrade-menbou', earned: (s) => s.upgrades.length >= 1 },
+  { id: 'upgrade10', name: '研究熱心', description: '強化を10個買った', icon: 'upgrade-aichip', earned: (s) => s.upgrades.length >= 10 },
+  { id: 'upgrade25', name: '餃子研究家', description: '強化を25個買った', icon: 'building-kenkyujo', earned: (s) => s.upgrades.length >= 25 },
+  { id: 'golden1', name: '金色の出会い', description: '金の餃子を1回つかまえた', icon: 'golden', earned: (s) => s.goldenClicks >= 1 },
+  { id: 'golden7', name: 'ラッキーセブン', description: '金の餃子を7回つかまえた', icon: 'bonus-clover', earned: (s) => s.goldenClicks >= 7 },
+  { id: 'golden77', name: '金の餃子ハンター', description: '金の餃子を77回つかまえた', icon: 'bonus-crown', earned: (s) => s.goldenClicks >= 77 },
 ];
 
 export function earnedAchievements(state: GameState): Set<string> {
