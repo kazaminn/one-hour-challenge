@@ -26,7 +26,7 @@ export const BUILDINGS = [
     name: '餃子の自動製造機',
     counter: '台',
     baseCost: 1_100,
-    perSecond: 8,
+    perSecond: 10,
     flavor: '機械の力で効率アップ。',
   },
   {
@@ -34,7 +34,7 @@ export const BUILDINGS = [
     name: '町の餃子専門店',
     counter: '店舗',
     baseCost: 12_000,
-    perSecond: 47,
+    perSecond: 100,
     flavor: 'いい匂いで人々を惹きつける。',
   },
   {
