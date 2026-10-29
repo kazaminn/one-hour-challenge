@@ -14,6 +14,7 @@ import {
   initialState,
   load,
   nextBonusStep,
+  perClick,
   perSecond,
   tick,
   unitPerSecond,
@@ -33,7 +34,7 @@ const formatRate = (n: number) =>
 type Amount = number | 'max';
 const AMOUNT_PRESETS: Amount[] = [1, 10, 50, 100, 'max'];
 
-type Floater = { id: number; x: number; y: number };
+type Floater = { id: number; x: number; y: number; n: number };
 type Toast = { id: number; name: string; description: string };
 
 function save(state: GameState) {
@@ -101,6 +102,7 @@ export function GyozaClicker() {
   }, [loaded]);
 
   const onBake = (e: MouseEvent<HTMLButtonElement>) => {
+    const n = perClick(state);
     setState((s) => click(tick(s, Date.now())));
     setWobble((n) => n + 1);
     const box = e.currentTarget.getBoundingClientRect();
@@ -108,7 +110,7 @@ export function GyozaClicker() {
     const x = e.clientX ? e.clientX - box.left : box.width / 2;
     const y = e.clientY ? e.clientY - box.top : box.height / 2;
     const id = nextId.current++;
-    setFloaters((f) => [...f, { id, x, y }]);
+    setFloaters((f) => [...f, { id, x, y, n }]);
     setTimeout(() => setFloaters((f) => f.filter((x) => x.id !== id)), 800);
   };
 
@@ -141,7 +143,9 @@ export function GyozaClicker() {
               {format(state.gyoza)}
               <span className="ml-1 text-[1.25rem]">個</span>
             </p>
-            <p className="text-sm text-stone-600">毎秒 {formatRate(rate)} 個</p>
+            <p className="text-sm text-stone-600">
+              毎秒 {formatRate(rate)} 個・1クリック {format(perClick(state))} 個
+            </p>
           </div>
           <button
             type="button"
@@ -164,7 +168,7 @@ export function GyozaClicker() {
                 className="gyoza-float pointer-events-none absolute text-[1.75rem] font-bold text-white [text-shadow:0_2px_4px_rgb(0_0_0/0.6)]"
                 style={{ left: f.x, top: f.y }}
               >
-                +1
+                +{format(f.n)}
               </span>
             ))}
           </button>
@@ -228,7 +232,9 @@ export function GyozaClicker() {
                       </span>
                     </p>
                     <p className="text-xs text-stone-600">
-                      毎秒 {formatRate(unitPerSecond(b, state.owned[b.id]))} 個・{b.flavor}
+                      毎秒 {formatRate(unitPerSecond(b, state.owned[b.id]))} 個
+                      {b.id === 'tezukuri' && `・1クリック +${bonus(state.owned[b.id])}個`}・
+                      {b.flavor}
                     </p>
                     <p className="text-xs text-amber-800">
                       {bonus(state.owned[b.id]) > 1 && (
@@ -286,10 +292,13 @@ export function GyozaClicker() {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="gyoza-toast rounded-xl bg-stone-900/90 px-5 py-3 text-white shadow-xl"
+            className="gyoza-toast flex items-center gap-3 rounded-xl bg-stone-900/90 px-5 py-3 text-white shadow-xl"
           >
-            <p className="font-bold">🏆 実績解除：{t.name}</p>
-            <p className="text-sm text-stone-300">{t.description}</p>
+            <img src="/gyoza/gyoza-levelup.webp" alt="" className="size-12 shrink-0" />
+            <div>
+              <p className="font-bold">🏆 実績解除：{t.name}</p>
+              <p className="text-sm text-stone-300">{t.description}</p>
+            </div>
           </div>
         ))}
       </div>

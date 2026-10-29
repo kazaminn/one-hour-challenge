@@ -123,8 +123,17 @@ export function tick(state: GameState, now: number): GameState {
   return { ...add(state, perSecond(state) * seconds), at: now };
 }
 
+/**
+ * Gyoza per click: 1 by hand, plus 1 for each 手作り餃子 owned. Its owned-count
+ * bonus doubles the click share too, so buying it in bulk pays off on clicks.
+ */
+export function perClick(state: GameState): number {
+  const owned = state.owned.tezukuri;
+  return 1 + owned * bonus(owned);
+}
+
 export function click(state: GameState): GameState {
-  return add(state, 1);
+  return add(state, perClick(state));
 }
 
 /** What the next `count` of a building cost together, each priced as it's bought. */
