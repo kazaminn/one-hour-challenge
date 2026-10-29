@@ -16,8 +16,8 @@ import {
   earnedAchievements,
   formatJa,
   GOLDEN_STAY_MS,
-  GOLDEN_WAIT_MS,
   goldenClick,
+  goldenWaitMs,
   initialState,
   load,
   nextBonusStep,
@@ -44,6 +44,13 @@ const formatRate = (n: number) =>
 type Amount = number | 'max';
 const AMOUNT_PRESETS: Amount[] = [1, 10, 50, 100, 'max'];
 
+type Tab = 'shop' | 'upgrades' | 'achievements';
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'shop', label: 'お店' },
+  { id: 'upgrades', label: '強化' },
+  { id: 'achievements', label: '実績' },
+];
+
 type Floater = { id: number; x: number; y: number; n: number };
 type Toast = { id: number; image: string; title: string; description: string };
 /** Where a golden gyoza sits, in % of the viewport. */
@@ -68,6 +75,7 @@ export function GyozaClicker() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [focusedUpgrade, setFocusedUpgrade] = useState<string | null>(null);
   const [golden, setGolden] = useState<Golden | null>(null);
+  const [tab, setTab] = useState<Tab>('shop');
   const nextId = useRef(0);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -84,7 +92,7 @@ export function GyozaClicker() {
     if (fresh.length === 0) return;
     showToasts(
       fresh.map((a) => ({
-        image: '/gyoza/gyoza-levelup.webp',
+        image: `/gyoza/${a.icon}.webp`,
         title: `🏆 実績解除：${a.name}`,
         description: a.description,
       })),
@@ -105,7 +113,8 @@ export function GyozaClicker() {
     if (!loaded) return;
     let timer: ReturnType<typeof setTimeout>;
     const wait = () => {
-      const delay = GOLDEN_WAIT_MS.min + Math.random() * (GOLDEN_WAIT_MS.max - GOLDEN_WAIT_MS.min);
+      const { min, max } = goldenWaitMs(stateRef.current);
+      const delay = min + Math.random() * (max - min);
       timer = setTimeout(() => {
         setGolden({ id: nextId.current++, x: 8 + Math.random() * 76, y: 12 + Math.random() * 68 });
         timer = setTimeout(() => {
@@ -172,8 +181,8 @@ export function GyozaClicker() {
     save(next);
     showToasts([
       {
-        image: '/gyoza/gyoza-levelup.webp',
-        title: `${effect.icon} ${effect.name}！`,
+        image: `/gyoza/${effect.image}.webp`,
+        title: `${effect.name}！`,
         description: gained > 0 ? `餃子を${format(gained)}個もらった` : effect.description,
       },
     ]);
@@ -190,6 +199,7 @@ export function GyozaClicker() {
   const rate = currentPerSecond(state, state.at);
   const buffs = buffsLeft(state, state.at);
   const upgrades = availableUpgrades(state);
+  const affordableUpgrades = upgrades.filter((u) => state.gyoza >= u.cost).length;
   const shownUpgrade = upgrades.find((u) => u.id === focusedUpgrade) ?? upgrades[0];
 
   return (
@@ -221,9 +231,10 @@ export function GyozaClicker() {
                 <li
                   key={b.effect.kind}
                   title={b.effect.description}
-                  className="rounded-full bg-amber-500 px-3 py-1 text-sm font-bold text-white shadow tabular-nums"
+                  className="flex items-center gap-1 rounded-full bg-amber-500 py-1 pr-3 pl-1.5 text-sm font-bold text-white shadow tabular-nums"
                 >
-                  {b.effect.icon} {b.effect.name} 残り{b.seconds}秒
+                  <img src={`/gyoza/${b.effect.image}.webp`} alt="" className="size-6" />
+                  {b.effect.name} 残り{b.seconds}秒
                 </li>
               ))}
             </ul>
@@ -255,165 +266,199 @@ export function GyozaClicker() {
           </button>
         </section>
 
-        <section className="rounded-2xl bg-amber-50/95 p-4 text-stone-900 shadow-xl">
-          <h2 className="mb-3 border-b-2 border-amber-800/30 pb-2 text-[1.25rem] font-bold">
-            強化
-            <span className="ml-2 text-sm font-normal text-stone-600">
-              {state.upgrades.length}個 購入済み
-            </span>
-          </h2>
-          {upgrades.length === 0 ? (
-            <p className="mb-6 text-sm text-stone-600">餃子を焼いたり設備を増やすと強化が出てきます。</p>
-          ) : (
-            <div className="mb-6">
-              <ul className="flex flex-wrap gap-1.5" onMouseLeave={() => setFocusedUpgrade(null)}>
-                {upgrades.map((u) => (
-                  <li key={u.id}>
-                    <button
-                      type="button"
-                      aria-label={`${u.name}：${u.description}（${format(u.cost)}個）`}
-                      aria-disabled={state.gyoza < u.cost}
-                      onClick={() => onBuyUpgrade(u.id)}
-                      onMouseEnter={() => setFocusedUpgrade(u.id)}
-                      onFocus={() => setFocusedUpgrade(u.id)}
-                      className={`block cursor-pointer rounded-lg border-2 bg-white p-1 shadow-sm ${
-                        state.gyoza >= u.cost
-                          ? 'border-amber-500 hover:bg-amber-100'
-                          : 'border-stone-300 opacity-50'
-                      } ${shownUpgrade?.id === u.id ? 'ring-2 ring-amber-700' : ''}`}
-                    >
-                      <img src={upgradeIcon(u)} alt="" className="size-10" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {/* Fixed height so hovering a different upgrade never shifts the page. */}
-              {shownUpgrade && (
-                <div className="mt-2 h-10 text-sm leading-5">
-                  <p className="flex gap-2">
-                    <span className="truncate font-bold">{shownUpgrade.name}</span>
-                    <span
-                      className={`ml-auto shrink-0 font-bold tabular-nums ${state.gyoza >= shownUpgrade.cost ? 'text-amber-700' : 'text-stone-500'}`}
-                    >
-                      {format(shownUpgrade.cost)}個
-                    </span>
-                  </p>
-                  <p className="truncate text-stone-600">{shownUpgrade.description}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          <h2 className="mb-3 border-b-2 border-amber-800/30 pb-2 text-[1.25rem] font-bold">お店</h2>
-          <div className="mb-3 flex flex-wrap items-center gap-1.5 text-sm">
-            <span className="mr-1 text-stone-600">まとめ買い</span>
-            {AMOUNT_PRESETS.map((a) => (
+        <section className="flex flex-col overflow-hidden rounded-2xl bg-amber-50/95 text-stone-900 shadow-xl md:sticky md:top-6 md:h-[calc(100dvh-3rem)]">
+          <div role="tablist" aria-label="お店のメニュー" className="flex shrink-0 gap-1 border-b-2 border-amber-800/20 px-3 pt-3">
+            {TABS.map((t) => (
               <button
-                key={a}
+                key={t.id}
                 type="button"
-                aria-pressed={amount === a}
-                onClick={() => setAmount(a)}
-                className="cursor-pointer rounded-md border border-amber-700/40 px-2.5 py-1 font-bold aria-pressed:bg-amber-700 aria-pressed:text-white"
+                role="tab"
+                id={`gyoza-tab-${t.id}`}
+                aria-selected={tab === t.id}
+                aria-controls="gyoza-tabpanel"
+                onClick={() => setTab(t.id)}
+                className="relative flex cursor-pointer items-center gap-1.5 rounded-t-xl border-2 border-b-0 border-amber-800/20 bg-amber-100 px-4 py-2 font-bold text-amber-900 hover:bg-amber-200 aria-selected:border-red-700 aria-selected:bg-red-600 aria-selected:text-white"
               >
-                {a === 'max' ? '最大' : `×${a}`}
+                {t.id === 'shop' && <img src="/gyoza/gyoza.webp" alt="" className="size-6" />}
+                {t.label}
+                {t.id === 'upgrades' && affordableUpgrades > 0 && (
+                  <span className="rounded-full bg-amber-500 px-1.5 text-xs text-white tabular-nums">
+                    {affordableUpgrades}
+                  </span>
+                )}
+                {t.id === 'achievements' && (
+                  <span className="text-xs font-normal tabular-nums opacity-80">
+                    {earned.size}/{ACHIEVEMENTS.length}
+                  </span>
+                )}
               </button>
             ))}
-            <label className="flex items-center gap-1">
-              <span className="sr-only">個数を指定</span>×
-              <input
-                type="number"
-                min={1}
-                max={9999}
-                value={typeof amount === 'number' ? amount : ''}
-                placeholder="n"
-                onChange={(e) => {
-                  const n = Math.floor(Number(e.target.value));
-                  if (n >= 1) setAmount(Math.min(n, 9999));
-                }}
-                className="w-16 rounded-md border border-amber-700/40 bg-white px-2 py-1"
-              />
-            </label>
           </div>
-          <ul className="flex flex-col gap-2">
-            {BUILDINGS.map((b, i) => {
-              const shown = visibility(state, i);
-              if (shown === 'hidden') return null;
-              if (shown === 'teaser') {
-                return (
-                  <li key={b.id} className="flex items-center gap-3 rounded-xl bg-stone-200/70 p-2">
-                    <img src="/gyoza/building-locked.webp" alt="" className="size-14 opacity-70" />
-                    <p className="text-lg font-bold text-stone-500">???</p>
-                  </li>
-                );
-              }
-              const count = amount === 'max' ? affordableCount(state, b) : amount;
-              const price = costOf(b, state.owned[b.id], count);
-              const affordable = state.gyoza >= price;
-              return (
-                <li key={b.id} className="flex items-center gap-3 rounded-xl bg-white p-2 shadow-sm">
-                  <img src={`/gyoza/building-${b.id}.webp`} alt="" className="size-14 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold">
-                      {b.name}
-                      <span className="ml-2 text-sm font-normal text-stone-600">
-                        {state.owned[b.id]}
-                        {b.counter}
-                      </span>
-                    </p>
-                    <p className="text-xs text-stone-600">
-                      毎秒 {formatRate(unitPerSecond(state, b))} 個
-                      {b.id === 'tezukuri' && `・1クリック +${format(tezukuriClickShare(state))}個`}・
-                      {b.flavor}
-                    </p>
-                    <p className="text-xs text-amber-800">
-                      {bonus(state.owned[b.id]) * upgradeMultiplier(state, b.id) > 1 && (
-                        <span className="mr-1 rounded bg-amber-600 px-1 font-bold text-white">
-                          ×{format(bonus(state.owned[b.id]) * upgradeMultiplier(state, b.id))}
-                        </span>
-                      )}
-                      {nextBonusStep(state.owned[b.id]) != null
-                        ? `${nextBonusStep(state.owned[b.id])}${b.counter}で生産2倍`
-                        : 'ボーナス最大'}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={!affordable}
-                    onClick={() => onBuy(b.id, count)}
-                    className="shrink-0 cursor-pointer rounded-lg bg-amber-600 px-3 py-2 text-sm font-bold text-white tabular-nums hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500"
-                  >
-                    {format(price)}個
-                    <br />
-                    {count > 1 ? `${count}${b.counter}購入` : '購入'}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
 
-          <h2 className="mt-6 mb-3 border-b-2 border-amber-800/30 pb-2 text-[1.25rem] font-bold">
-            実績
-            <span className="ml-2 text-sm font-normal text-stone-600">
-              {earned.size} / {ACHIEVEMENTS.length}
-            </span>
-          </h2>
-          <ul className="flex flex-wrap gap-2">
-            {ACHIEVEMENTS.map((a) =>
-              earned.has(a.id) ? (
-                <li
-                  key={a.id}
-                  title={a.description}
-                  className="rounded-full bg-amber-500 px-3 py-1 text-sm font-bold text-white"
-                >
-                  🏆 {a.name}
-                </li>
-              ) : (
-                <li key={a.id} className="rounded-full bg-stone-200 px-3 py-1 text-sm text-stone-500">
-                  ？？？
-                </li>
-              ),
+          <div
+            role="tabpanel"
+            id="gyoza-tabpanel"
+            aria-labelledby={`gyoza-tab-${tab}`}
+            className="min-h-0 flex-1 overflow-y-auto p-4 [scrollbar-gutter:stable]"
+          >
+            {tab === 'shop' && (
+              <>
+              <div className="mb-3 flex flex-wrap items-center gap-1.5 text-sm">
+                <span className="mr-1 text-stone-600">まとめ買い</span>
+                {AMOUNT_PRESETS.map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    aria-pressed={amount === a}
+                    onClick={() => setAmount(a)}
+                    className="cursor-pointer rounded-md border border-amber-700/40 px-2.5 py-1 font-bold aria-pressed:bg-amber-700 aria-pressed:text-white"
+                  >
+                    {a === 'max' ? '最大' : `×${a}`}
+                  </button>
+                ))}
+                <label className="flex items-center gap-1">
+                  <span className="sr-only">個数を指定</span>×
+                  <input
+                    type="number"
+                    min={1}
+                    max={9999}
+                    value={typeof amount === 'number' ? amount : ''}
+                    placeholder="n"
+                    onChange={(e) => {
+                      const n = Math.floor(Number(e.target.value));
+                      if (n >= 1) setAmount(Math.min(n, 9999));
+                    }}
+                    className="w-16 rounded-md border border-amber-700/40 bg-white px-2 py-1"
+                  />
+                </label>
+              </div>
+              <ul className="flex flex-col gap-2">
+                {BUILDINGS.map((b, i) => {
+                  const shown = visibility(state, i);
+                  if (shown === 'hidden') return null;
+                  if (shown === 'teaser') {
+                    return (
+                      <li key={b.id} className="flex items-center gap-3 rounded-xl bg-stone-200/70 p-2">
+                        <img src="/gyoza/building-locked.webp" alt="" className="size-14 opacity-70" />
+                        <p className="text-lg font-bold text-stone-500">???</p>
+                      </li>
+                    );
+                  }
+                  const count = amount === 'max' ? affordableCount(state, b) : amount;
+                  const price = costOf(b, state.owned[b.id], count);
+                  const affordable = state.gyoza >= price;
+                  return (
+                    <li key={b.id} className="flex items-center gap-3 rounded-xl bg-white p-2 shadow-sm">
+                      <img src={`/gyoza/building-${b.id}.webp`} alt="" className="size-14 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold">
+                          {b.name}
+                          <span className="ml-2 text-sm font-normal text-stone-600">
+                            {state.owned[b.id]}
+                            {b.counter}
+                          </span>
+                        </p>
+                        <p className="text-xs text-stone-600">
+                          毎秒 {formatRate(unitPerSecond(state, b))} 個
+                          {b.id === 'tezukuri' && `・1クリック +${format(tezukuriClickShare(state))}個`}・
+                          {b.flavor}
+                        </p>
+                        <p className="text-xs text-amber-800">
+                          {bonus(state.owned[b.id]) * upgradeMultiplier(state, b.id) > 1 && (
+                            <span className="mr-1 rounded bg-amber-600 px-1 font-bold text-white">
+                              ×{format(bonus(state.owned[b.id]) * upgradeMultiplier(state, b.id))}
+                            </span>
+                          )}
+                          {nextBonusStep(state.owned[b.id]) != null
+                            ? `${nextBonusStep(state.owned[b.id])}${b.counter}で生産2倍`
+                            : 'ボーナス最大'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!affordable}
+                        onClick={() => onBuy(b.id, count)}
+                        className="shrink-0 cursor-pointer rounded-lg bg-amber-600 px-3 py-2 text-sm font-bold text-white tabular-nums hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500"
+                      >
+                        {format(price)}個
+                        <br />
+                        {count > 1 ? `${count}${b.counter}購入` : '購入'}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              </>
             )}
-          </ul>
+
+            {tab === 'upgrades' && (
+              <>
+                <p className="mb-3 text-sm text-stone-600">{state.upgrades.length}個 購入済み</p>
+              {upgrades.length === 0 ? (
+                <p className="text-sm text-stone-600">餃子を焼いたり設備を増やすと強化が出てきます。</p>
+              ) : (
+                <div>
+                  <ul className="flex flex-wrap gap-1.5" onMouseLeave={() => setFocusedUpgrade(null)}>
+                    {upgrades.map((u) => (
+                      <li key={u.id}>
+                        <button
+                          type="button"
+                          aria-label={`${u.name}：${u.description}（${format(u.cost)}個）`}
+                          aria-disabled={state.gyoza < u.cost}
+                          onClick={() => onBuyUpgrade(u.id)}
+                          onMouseEnter={() => setFocusedUpgrade(u.id)}
+                          onFocus={() => setFocusedUpgrade(u.id)}
+                          className={`block cursor-pointer rounded-lg border-2 bg-white p-1 shadow-sm ${
+                            state.gyoza >= u.cost
+                              ? 'border-amber-500 hover:bg-amber-100'
+                              : 'border-stone-300 opacity-50'
+                          } ${shownUpgrade?.id === u.id ? 'ring-2 ring-amber-700' : ''}`}
+                        >
+                          <img src={upgradeIcon(u)} alt="" className="size-10" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {/* Fixed height so hovering a different upgrade never shifts the page. */}
+                  {shownUpgrade && (
+                    <div className="mt-2 h-10 text-sm leading-5">
+                      <p className="flex gap-2">
+                        <span className="truncate font-bold">{shownUpgrade.name}</span>
+                        <span
+                          className={`ml-auto shrink-0 font-bold tabular-nums ${state.gyoza >= shownUpgrade.cost ? 'text-amber-700' : 'text-stone-500'}`}
+                        >
+                          {format(shownUpgrade.cost)}個
+                        </span>
+                      </p>
+                      <p className="truncate text-stone-600">{shownUpgrade.description}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              </>
+            )}
+
+            {tab === 'achievements' && (
+              <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {ACHIEVEMENTS.map((a) =>
+                  earned.has(a.id) ? (
+                    <li key={a.id} title={a.description} className="flex flex-col items-center gap-1 text-center">
+                      <img src={`/gyoza/${a.icon}.webp`} alt="" className="size-16" />
+                      <span className="text-xs font-bold leading-tight">{a.name}</span>
+                      <span className="sr-only">{a.description}</span>
+                    </li>
+                  ) : (
+                    <li key={a.id} className="flex flex-col items-center gap-1 text-center">
+                      <span className="grid size-16 place-items-center rounded-xl bg-stone-700 text-[1.75rem] font-bold text-stone-300">
+                        ?
+                      </span>
+                      <span className="text-xs text-stone-500">？？？</span>
+                    </li>
+                  ),
+                )}
+              </ul>
+            )}
+          </div>
         </section>
       </div>
 
@@ -427,7 +472,7 @@ export function GyozaClicker() {
           style={{ left: `${golden.x}%`, top: `${golden.y}%` }}
         >
           <img
-            src="/gyoza/gyoza-levelup.webp"
+            src="/gyoza/golden.webp"
             alt=""
             draggable={false}
             className="size-20 select-none drop-shadow-[0_0_12px_rgb(253_224_71)] md:size-24"
@@ -454,5 +499,5 @@ export function GyozaClicker() {
 }
 
 function upgradeIcon(u: Upgrade): string {
-  return u.kind === 'building' ? `/gyoza/building-${u.building}.webp` : '/gyoza/gyoza-click.webp';
+  return `/gyoza/${u.icon}.webp`;
 }
