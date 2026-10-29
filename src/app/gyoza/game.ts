@@ -67,6 +67,8 @@ export type GameState = {
   /** Gyoza ever baked, spent or not. Unlocks buildings. */
   baked: number;
   owned: Record<BuildingId, number>;
+  /** Ids of the upgrades bought, in purchase order. */
+  upgrades: string[];
   /** When this state was last advanced, in ms since the epoch. */
   at: number;
 };
@@ -76,6 +78,7 @@ export function initialState(now: number): GameState {
     gyoza: 0,
     baked: 0,
     owned: Object.fromEntries(BUILDINGS.map((b) => [b.id, 0])) as Record<BuildingId, number>,
+    upgrades: [],
     at: now,
   };
 }
@@ -101,16 +104,125 @@ export function nextBonusStep(owned: number): number | null {
   return BONUS_STEPS.find((step) => owned < step) ?? null;
 }
 
-/** What one of `building` bakes per second right now, bonus included. */
-export function unitPerSecond(building: Building, owned: number): number {
-  return building.perSecond * bonus(owned);
+/**
+ * Upgrades are one-off purchases. Building upgrades double one building's
+ * output; click upgrades double the click or add a share of the per-second
+ * rate to it, so clicking stays worth it late in the game.
+ */
+export type Upgrade = {
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  /** Shows in the shop once this holds; it stays bought after that. */
+  unlocked: (state: GameState) => boolean;
+} & (
+  | { kind: 'building'; building: BuildingId }
+  | { kind: 'clickDouble' }
+  | { kind: 'clickRate'; share: number }
+);
+
+/** Owned counts that unlock each tier of a building's upgrades, and the price as a multiple of its base cost. */
+const BUILDING_TIERS = [
+  { owned: 1, price: 10, name: '下ごしらえ' },
+  { owned: 5, price: 50, name: '秘伝のタレ' },
+  { owned: 25, price: 500, name: '羽根つき' },
+  { owned: 50, price: 50_000, name: '黄金の焼き色' },
+  { owned: 100, price: 5_000_000, name: '伝説の一皿' },
+  { owned: 150, price: 500_000_000, name: '餃子の極み' },
+] as const;
+
+export const UPGRADES: readonly Upgrade[] = [
+  {
+    id: 'click1',
+    kind: 'clickDouble',
+    name: '焼き上手',
+    description: 'クリックで焼ける数が2倍',
+    cost: 100,
+    unlocked: (s) => s.baked >= 50,
+  },
+  {
+    id: 'click2',
+    kind: 'clickDouble',
+    name: 'フライパン二刀流',
+    description: 'クリックで焼ける数が2倍',
+    cost: 500,
+    unlocked: (s) => s.owned.tezukuri >= 1,
+  },
+  {
+    id: 'click3',
+    kind: 'clickDouble',
+    name: '高速返し',
+    description: 'クリックで焼ける数が2倍',
+    cost: 10_000,
+    unlocked: (s) => s.owned.tezukuri >= 10,
+  },
+  ...(
+    [
+      [4, '餃子の目利き', 1e4, 5e4],
+      [5, '焼き場の達人', 1e6, 5e6],
+      [6, '餃子の神の手', 1e8, 5e8],
+      [7, '無限焼き', 1e10, 5e10],
+      [8, '宇宙の焼き手', 1e12, 5e12],
+    ] as const
+  ).map(
+    ([n, name, need, cost]): Upgrade => ({
+      id: `click${n}`,
+      kind: 'clickRate',
+      share: 0.01,
+      name,
+      description: 'クリックごとに毎秒の生産の1%も焼ける',
+      cost,
+      unlocked: (s) => s.baked >= need,
+    }),
+  ),
+  ...BUILDINGS.flatMap((b) =>
+    BUILDING_TIERS.map(
+      (t, i): Upgrade => ({
+        id: `${b.id}${i + 1}`,
+        kind: 'building',
+        building: b.id,
+        name: `${b.name}・${t.name}`,
+        description: `${b.name}の生産が2倍`,
+        cost: b.baseCost * t.price,
+        unlocked: (s) => s.owned[b.id] >= t.owned,
+      }),
+    ),
+  ),
+];
+
+const UPGRADE_BY_ID = new Map(UPGRADES.map((u) => [u.id, u]));
+
+function bought(state: GameState): Upgrade[] {
+  return state.upgrades.flatMap((id) => UPGRADE_BY_ID.get(id) ?? []);
+}
+
+/** Upgrades on sale now: unlocked, not yet bought, cheapest first. */
+export function availableUpgrades(state: GameState): Upgrade[] {
+  const have = new Set(state.upgrades);
+  return UPGRADES.filter((u) => !have.has(u.id) && u.unlocked(state)).sort((a, b) => a.cost - b.cost);
+}
+
+/** Returns the state after buying upgrade `id`, or null when it can't be. */
+export function buyUpgrade(state: GameState, id: string): GameState | null {
+  const upgrade = UPGRADE_BY_ID.get(id);
+  if (!upgrade || state.upgrades.includes(id) || !upgrade.unlocked(state)) return null;
+  if (state.gyoza < upgrade.cost) return null;
+  return { ...state, gyoza: state.gyoza - upgrade.cost, upgrades: [...state.upgrades, id] };
+}
+
+/** The multiplier bought upgrades give `building`. */
+export function upgradeMultiplier(state: GameState, building: BuildingId): number {
+  return 2 ** bought(state).filter((u) => u.kind === 'building' && u.building === building).length;
+}
+
+/** What one of `building` bakes per second right now, bonuses and upgrades included. */
+export function unitPerSecond(state: GameState, building: Building): number {
+  return building.perSecond * bonus(state.owned[building.id]) * upgradeMultiplier(state, building.id);
 }
 
 export function perSecond(state: GameState): number {
-  return BUILDINGS.reduce(
-    (sum, b) => sum + unitPerSecond(b, state.owned[b.id]) * state.owned[b.id],
-    0,
-  );
+  return BUILDINGS.reduce((sum, b) => sum + unitPerSecond(state, b) * state.owned[b.id], 0);
 }
 
 function add(state: GameState, n: number): GameState {
@@ -123,13 +235,21 @@ export function tick(state: GameState, now: number): GameState {
   return { ...add(state, perSecond(state) * seconds), at: now };
 }
 
+/** What each 手作り餃子 adds to a click: its owned-count bonus and upgrades apply here too. */
+export function tezukuriClickShare(state: GameState): number {
+  return bonus(state.owned.tezukuri) * upgradeMultiplier(state, 'tezukuri');
+}
+
 /**
- * Gyoza per click: 1 by hand, plus 1 for each 手作り餃子 owned. Its owned-count
- * bonus doubles the click share too, so buying it in bulk pays off on clicks.
+ * Gyoza per click: 1 by hand plus each 手作り餃子's share, doubled by click
+ * upgrades, plus a slice of the per-second rate from the later click upgrades.
  */
 export function perClick(state: GameState): number {
-  const owned = state.owned.tezukuri;
-  return 1 + owned * bonus(owned);
+  const ups = bought(state);
+  const doubles = ups.filter((u) => u.kind === 'clickDouble').length;
+  const share = ups.reduce((sum, u) => sum + (u.kind === 'clickRate' ? u.share : 0), 0);
+  const base = 1 + state.owned.tezukuri * tezukuriClickShare(state);
+  return base * 2 ** doubles + perSecond(state) * share;
 }
 
 export function click(state: GameState): GameState {
@@ -187,10 +307,14 @@ export function load(json: string | null, now: number): GameState {
       typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback;
     const owned = { ...fresh.owned };
     for (const b of BUILDINGS) owned[b.id] = Math.floor(num(saved.owned?.[b.id], 0));
+    const upgrades = Array.isArray(saved.upgrades)
+      ? [...new Set(saved.upgrades.filter((id) => typeof id === 'string' && UPGRADE_BY_ID.has(id)))]
+      : [];
     return {
       gyoza: num(saved.gyoza, 0),
       baked: num(saved.baked, 0),
       owned,
+      upgrades,
       at: Math.min(num(saved.at, now), now),
     };
   } catch {
@@ -242,6 +366,9 @@ export const ACHIEVEMENTS: readonly {
   { id: 'kojo1', name: '世界の餃子', description: '世界の餃子工場を建てた', earned: (s) => s.owned.kojo >= 1 },
   { id: 'rate10', name: '自動で焼ける', description: '毎秒10個焼けるようになった', earned: (s) => perSecond(s) >= 10 },
   { id: 'rate1k', name: '餃子の滝', description: '毎秒1,000個焼けるようになった', earned: (s) => perSecond(s) >= 1_000 },
+  { id: 'upgrade1', name: 'ひと工夫', description: '強化を1つ買った', earned: (s) => s.upgrades.length >= 1 },
+  { id: 'upgrade10', name: '研究熱心', description: '強化を10個買った', earned: (s) => s.upgrades.length >= 10 },
+  { id: 'upgrade25', name: '餃子研究家', description: '強化を25個買った', earned: (s) => s.upgrades.length >= 25 },
 ];
 
 export function earnedAchievements(state: GameState): Set<string> {
