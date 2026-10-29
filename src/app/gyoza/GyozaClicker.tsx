@@ -7,17 +7,22 @@ import {
   affordableCount,
   availableUpgrades,
   bonus,
+  buffsLeft,
   buy,
   buyUpgrade,
   click,
   costOf,
+  currentPerSecond,
   earnedAchievements,
   formatJa,
+  GOLDEN_STAY_MS,
+  GOLDEN_WAIT_MS,
+  goldenClick,
   initialState,
   load,
   nextBonusStep,
   perClick,
-  perSecond,
+  pickGoldenEffect,
   tezukuriClickShare,
   tick,
   unitPerSecond,
@@ -40,7 +45,9 @@ type Amount = number | 'max';
 const AMOUNT_PRESETS: Amount[] = [1, 10, 50, 100, 'max'];
 
 type Floater = { id: number; x: number; y: number; n: number };
-type Toast = { id: number; name: string; description: string };
+type Toast = { id: number; image: string; title: string; description: string };
+/** Where a golden gyoza sits, in % of the viewport. */
+type Golden = { id: number; x: number; y: number };
 
 function save(state: GameState) {
   try {
@@ -60,6 +67,7 @@ export function GyozaClicker() {
   const [floaters, setFloaters] = useState<Floater[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [focusedUpgrade, setFocusedUpgrade] = useState<string | null>(null);
+  const [golden, setGolden] = useState<Golden | null>(null);
   const nextId = useRef(0);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -74,13 +82,41 @@ export function GyozaClicker() {
     if (!before) return;
     const fresh = ACHIEVEMENTS.filter((a) => earned.has(a.id) && !before.has(a.id));
     if (fresh.length === 0) return;
-    const added = fresh.map((a) => ({ id: nextId.current++, name: a.name, description: a.description }));
+    showToasts(
+      fresh.map((a) => ({
+        image: '/gyoza/gyoza-levelup.webp',
+        title: `🏆 実績解除：${a.name}`,
+        description: a.description,
+      })),
+    );
+  });
+
+  function showToasts(list: Omit<Toast, 'id'>[]) {
+    const added = list.map((t) => ({ ...t, id: nextId.current++ }));
     setToasts((t) => [...t, ...added]);
     setTimeout(() => {
       const gone = new Set(added.map((t) => t.id));
       setToasts((t) => t.filter((x) => !gone.has(x.id)));
     }, 3_500);
-  });
+  }
+
+  // A golden gyoza shows up every one to three minutes and leaves after a while.
+  useEffect(() => {
+    if (!loaded) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const wait = () => {
+      const delay = GOLDEN_WAIT_MS.min + Math.random() * (GOLDEN_WAIT_MS.max - GOLDEN_WAIT_MS.min);
+      timer = setTimeout(() => {
+        setGolden({ id: nextId.current++, x: 8 + Math.random() * 76, y: 12 + Math.random() * 68 });
+        timer = setTimeout(() => {
+          setGolden(null);
+          wait();
+        }, GOLDEN_STAY_MS);
+      }, delay);
+    };
+    wait();
+    return () => clearTimeout(timer);
+  }, [loaded]);
 
   useEffect(() => {
     let saved: string | null = null;
@@ -128,6 +164,21 @@ export function GyozaClicker() {
     });
   };
 
+  const onGolden = () => {
+    setGolden(null);
+    const effect = pickGoldenEffect(Math.random());
+    const { state: next, gained } = goldenClick(stateRef.current, effect, Date.now());
+    setState(next);
+    save(next);
+    showToasts([
+      {
+        image: '/gyoza/gyoza-levelup.webp',
+        title: `${effect.icon} ${effect.name}！`,
+        description: gained > 0 ? `餃子を${format(gained)}個もらった` : effect.description,
+      },
+    ]);
+  };
+
   const onBuyUpgrade = (id: string) => {
     setState((s) => {
       const next = buyUpgrade(tick(s, Date.now()), id);
@@ -136,7 +187,8 @@ export function GyozaClicker() {
     });
   };
 
-  const rate = perSecond(state);
+  const rate = currentPerSecond(state, state.at);
+  const buffs = buffsLeft(state, state.at);
   const upgrades = availableUpgrades(state);
   const shownUpgrade = upgrades.find((u) => u.id === focusedUpgrade) ?? upgrades[0];
 
@@ -163,6 +215,19 @@ export function GyozaClicker() {
               毎秒 {formatRate(rate)} 個・1クリック {format(perClick(state))} 個
             </p>
           </div>
+          {buffs.length > 0 && (
+            <ul className="flex flex-wrap justify-center gap-2">
+              {buffs.map((b) => (
+                <li
+                  key={b.effect.kind}
+                  title={b.effect.description}
+                  className="rounded-full bg-amber-500 px-3 py-1 text-sm font-bold text-white shadow tabular-nums"
+                >
+                  {b.effect.icon} {b.effect.name} 残り{b.seconds}秒
+                </li>
+              ))}
+            </ul>
+          )}
           <button
             type="button"
             onClick={onBake}
@@ -349,15 +414,33 @@ export function GyozaClicker() {
         </section>
       </div>
 
+      {golden && (
+        <button
+          key={golden.id}
+          type="button"
+          aria-label="金の餃子をつかまえる"
+          onClick={onGolden}
+          className="gyoza-golden fixed z-10 cursor-pointer"
+          style={{ left: `${golden.x}%`, top: `${golden.y}%` }}
+        >
+          <img
+            src="/gyoza/gyoza-levelup.webp"
+            alt=""
+            draggable={false}
+            className="size-20 select-none drop-shadow-[0_0_12px_rgb(253_224_71)] md:size-24"
+          />
+        </button>
+      )}
+
       <div aria-live="polite" className="fixed inset-x-0 bottom-4 flex flex-col items-center gap-2 px-4">
         {toasts.map((t) => (
           <div
             key={t.id}
             className="gyoza-toast flex items-center gap-3 rounded-xl bg-stone-900/90 px-5 py-3 text-white shadow-xl"
           >
-            <img src="/gyoza/gyoza-levelup.webp" alt="" className="size-12 shrink-0" />
+            <img src={t.image} alt="" className="size-12 shrink-0" />
             <div>
-              <p className="font-bold">🏆 実績解除：{t.name}</p>
+              <p className="font-bold">{t.title}</p>
               <p className="text-sm text-stone-300">{t.description}</p>
             </div>
           </div>
