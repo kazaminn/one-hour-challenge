@@ -40,8 +40,8 @@ export const ROUNDS: Round[] = [
     round: 2,
     title: '60分で、餃子クリッカーを作って公開する',
     // TODO: 本番の日時が決まったら書き換える（仮の値）
-    startAt: '2026-10-29T13:31:00+09:00',
-    endAt: '2026-10-29T14:31:00+09:00',
+    startAt: '2026-10-29T13:10:00+09:00',
+    endAt: '2026-10-29T14:10:00+09:00',
     milestones: [
       { value: 'setup', title: '準備', description: '画面に餃子を出す' },
       { value: 'click', title: '餃子を焼く', description: 'クリックで餃子が増える' },

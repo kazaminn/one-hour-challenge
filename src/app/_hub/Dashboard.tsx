@@ -11,7 +11,6 @@ import {
   Separator,
   Stack,
   Text,
-  Timer,
   Toaster,
   type Step,
 } from '@kazamitte/kazamitte-ui';
@@ -59,6 +58,13 @@ function takeAdminToken(): string | null {
 
 function formatTime(iso: string) {
   return timeFormat.format(new Date(iso));
+}
+
+/** h:mm:ss, rounded up so the clock reads 0:00:00 only once time is up. */
+function formatRemaining(ms: number) {
+  const total = Math.ceil(Math.max(0, ms) / 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${Math.floor(total / 3600)}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
 }
 
 /**
@@ -228,14 +234,12 @@ export function Dashboard({
             </Card.Header>
             <Card.Body>
               <Stack gap={4}>
+                {/* Derived from the wall clock every tick, so it never drifts from
+                    the progress bar and holds at the full hour until the start. */}
                 {now != null && (
-                  <Timer
-                    key={phase}
-                    countdown
-                    autoStart
-                    startMs={Math.max(0, end - (phase === 'before' ? start : now))}
-                    controls={false}
-                  />
+                  <p className="font-mono text-highlight-28 font-bold base-fg-strong tabular-nums">
+                    {formatRemaining(end - Math.max(now, start))}
+                  </p>
                 )}
                 <Progress
                   value={Math.round(elapsedPct)}
