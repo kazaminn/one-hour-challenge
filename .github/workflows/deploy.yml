@@ -55,6 +55,23 @@ jobs:
       name: production
       url: ${{ steps.deploy.outputs.url }}
     steps:
+      # ビルド成果物の関数は node_modules の中のファイルを参照しているので、
+      # deploy 側でも同じ依存を入れておく必要がある（checkout は作業フォルダを
+      # 消すので、成果物のダウンロードより先にやる）
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - uses: actions/download-artifact@v4
         with:
           name: vercel-output
@@ -63,8 +80,8 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      # deploy も .vercel/project.json が要るので、ここでもプロジェクト設定を取ってくる
-      # （.vercel ごと成果物にすると環境変数の値まで残るので、output だけを受け渡している）
+      # .vercel ごと成果物にすると環境変数の値まで残るので、output だけを受け渡し、
+      # プロジェクト設定はここで取り直す
       - name: Pull Vercel project settings
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
