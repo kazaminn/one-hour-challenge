@@ -292,10 +292,13 @@ export function GyozaClicker() {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="gyoza-toast rounded-xl bg-stone-900/90 px-5 py-3 text-white shadow-xl"
+            className="gyoza-toast flex items-center gap-3 rounded-xl bg-stone-900/90 px-5 py-3 text-white shadow-xl"
           >
-            <p className="font-bold">🏆 実績解除：{t.name}</p>
-            <p className="text-sm text-stone-300">{t.description}</p>
+            <img src="/gyoza/gyoza-levelup.webp" alt="" className="size-12 shrink-0" />
+            <div>
+              <p className="font-bold">🏆 実績解除：{t.name}</p>
+              <p className="text-sm text-stone-300">{t.description}</p>
+            </div>
           </div>
         ))}
       </div>
