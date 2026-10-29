@@ -42,7 +42,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        # 公開直後のパッケージは npm から取れず 404 になることがあるので、1時間以内に出た版は避ける
+        run: npm install --global vercel@latest --before="$(date -u -d '-1 hour' +%FT%TZ)"
 
       # 本番の環境変数（Turso の接続情報など）とプロジェクト設定を取ってくる
       - name: Pull Vercel environment
