@@ -5,8 +5,10 @@ import {
   ACHIEVEMENTS,
   BUILDINGS,
   affordableCount,
+  availableUpgrades,
   bonus,
   buy,
+  buyUpgrade,
   click,
   costOf,
   earnedAchievements,
@@ -16,11 +18,14 @@ import {
   nextBonusStep,
   perClick,
   perSecond,
+  tezukuriClickShare,
   tick,
   unitPerSecond,
+  upgradeMultiplier,
   visibility,
   type BuildingId,
   type GameState,
+  type Upgrade,
 } from './game';
 
 const STORAGE_KEY = 'gyoza-clicker:v1';
@@ -54,6 +59,7 @@ export function GyozaClicker() {
   const [amount, setAmount] = useState<Amount>(1);
   const [floaters, setFloaters] = useState<Floater[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [focusedUpgrade, setFocusedUpgrade] = useState<string | null>(null);
   const nextId = useRef(0);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -122,7 +128,17 @@ export function GyozaClicker() {
     });
   };
 
+  const onBuyUpgrade = (id: string) => {
+    setState((s) => {
+      const next = buyUpgrade(tick(s, Date.now()), id);
+      if (next) save(next);
+      return next ?? s;
+    });
+  };
+
   const rate = perSecond(state);
+  const upgrades = availableUpgrades(state);
+  const shownUpgrade = upgrades.find((u) => u.id === focusedUpgrade) ?? upgrades[0];
 
   return (
     <div
@@ -175,6 +191,51 @@ export function GyozaClicker() {
         </section>
 
         <section className="rounded-2xl bg-amber-50/95 p-4 text-stone-900 shadow-xl">
+          <h2 className="mb-3 border-b-2 border-amber-800/30 pb-2 text-[1.25rem] font-bold">
+            強化
+            <span className="ml-2 text-sm font-normal text-stone-600">
+              {state.upgrades.length}個 購入済み
+            </span>
+          </h2>
+          {upgrades.length === 0 ? (
+            <p className="mb-6 text-sm text-stone-600">餃子を焼いたり設備を増やすと強化が出てきます。</p>
+          ) : (
+            <div className="mb-6">
+              <ul className="flex flex-wrap gap-1.5" onMouseLeave={() => setFocusedUpgrade(null)}>
+                {upgrades.map((u) => (
+                  <li key={u.id}>
+                    <button
+                      type="button"
+                      aria-label={`${u.name}：${u.description}（${format(u.cost)}個）`}
+                      aria-disabled={state.gyoza < u.cost}
+                      onClick={() => onBuyUpgrade(u.id)}
+                      onMouseEnter={() => setFocusedUpgrade(u.id)}
+                      onFocus={() => setFocusedUpgrade(u.id)}
+                      className={`block cursor-pointer rounded-lg border-2 bg-white p-1 shadow-sm ${
+                        state.gyoza >= u.cost
+                          ? 'border-amber-500 hover:bg-amber-100'
+                          : 'border-stone-300 opacity-50'
+                      } ${shownUpgrade?.id === u.id ? 'ring-2 ring-amber-700' : ''}`}
+                    >
+                      <img src={upgradeIcon(u)} alt="" className="size-10" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {shownUpgrade && (
+                <p className="mt-2 text-sm">
+                  <span className="font-bold">{shownUpgrade.name}</span>
+                  <span className="ml-2 text-stone-600">{shownUpgrade.description}</span>
+                  <span
+                    className={`ml-2 font-bold tabular-nums ${state.gyoza >= shownUpgrade.cost ? 'text-amber-700' : 'text-stone-500'}`}
+                  >
+                    {format(shownUpgrade.cost)}個
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
+
           <h2 className="mb-3 border-b-2 border-amber-800/30 pb-2 text-[1.25rem] font-bold">お店</h2>
           <div className="mb-3 flex flex-wrap items-center gap-1.5 text-sm">
             <span className="mr-1 text-stone-600">まとめ買い</span>
@@ -232,14 +293,14 @@ export function GyozaClicker() {
                       </span>
                     </p>
                     <p className="text-xs text-stone-600">
-                      毎秒 {formatRate(unitPerSecond(b, state.owned[b.id]))} 個
-                      {b.id === 'tezukuri' && `・1クリック +${bonus(state.owned[b.id])}個`}・
+                      毎秒 {formatRate(unitPerSecond(state, b))} 個
+                      {b.id === 'tezukuri' && `・1クリック +${format(tezukuriClickShare(state))}個`}・
                       {b.flavor}
                     </p>
                     <p className="text-xs text-amber-800">
-                      {bonus(state.owned[b.id]) > 1 && (
+                      {bonus(state.owned[b.id]) * upgradeMultiplier(state, b.id) > 1 && (
                         <span className="mr-1 rounded bg-amber-600 px-1 font-bold text-white">
-                          ×{bonus(state.owned[b.id])}
+                          ×{format(bonus(state.owned[b.id]) * upgradeMultiplier(state, b.id))}
                         </span>
                       )}
                       {nextBonusStep(state.owned[b.id]) != null
@@ -304,4 +365,8 @@ export function GyozaClicker() {
       </div>
     </div>
   );
+}
+
+function upgradeIcon(u: Upgrade): string {
+  return u.kind === 'building' ? `/gyoza/building-${u.building}.webp` : '/gyoza/gyoza-click.webp';
 }
