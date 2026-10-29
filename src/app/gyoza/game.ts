@@ -84,8 +84,33 @@ export function cost(building: Building, owned: number): number {
   return Math.ceil(building.baseCost * PRICE_GROWTH ** owned);
 }
 
+/**
+ * Owning this many of one building doubles its output, each step on top of the
+ * last. Spaced wider as they go so the bonus keeps pace with the 1.15× price:
+ * by 100 owned a unit costs ~1,000,000× more, against ×16 production.
+ */
+export const BONUS_STEPS = [10, 25, 50, 100, 200] as const;
+
+/** The production multiplier `owned` of one building has earned. */
+export function bonus(owned: number): number {
+  return 2 ** BONUS_STEPS.filter((step) => owned >= step).length;
+}
+
+/** The next owned count that raises the bonus, or null past the last step. */
+export function nextBonusStep(owned: number): number | null {
+  return BONUS_STEPS.find((step) => owned < step) ?? null;
+}
+
+/** What one of `building` bakes per second right now, bonus included. */
+export function unitPerSecond(building: Building, owned: number): number {
+  return building.perSecond * bonus(owned);
+}
+
 export function perSecond(state: GameState): number {
-  return BUILDINGS.reduce((sum, b) => sum + b.perSecond * state.owned[b.id], 0);
+  return BUILDINGS.reduce(
+    (sum, b) => sum + unitPerSecond(b, state.owned[b.id]) * state.owned[b.id],
+    0,
+  );
 }
 
 function add(state: GameState, n: number): GameState {
@@ -102,15 +127,33 @@ export function click(state: GameState): GameState {
   return add(state, 1);
 }
 
-/** Returns the state after buying one `id`, or null when it can't be afforded. */
-export function buy(state: GameState, id: BuildingId): GameState | null {
+/** What the next `count` of a building cost together, each priced as it's bought. */
+export function costOf(building: Building, owned: number, count: number): number {
+  let total = 0;
+  for (let i = 0; i < count; i++) total += cost(building, owned + i);
+  return total;
+}
+
+/** How many of a building the gyoza on hand can buy, at least 1 so a price can show. */
+export function affordableCount(state: GameState, building: Building): number {
+  let count = 0;
+  let total = 0;
+  while (true) {
+    total += cost(building, state.owned[building.id] + count);
+    if (total > state.gyoza) return Math.max(1, count);
+    count++;
+  }
+}
+
+/** Returns the state after buying `count` of `id`, or null when they can't be afforded. */
+export function buy(state: GameState, id: BuildingId, count = 1): GameState | null {
   const building = BUILDINGS.find((b) => b.id === id)!;
-  const price = cost(building, state.owned[id]);
-  if (state.gyoza < price) return null;
+  const price = costOf(building, state.owned[id], count);
+  if (count < 1 || state.gyoza < price) return null;
   return {
     ...state,
     gyoza: state.gyoza - price,
-    owned: { ...state.owned, [id]: state.owned[id] + 1 },
+    owned: { ...state.owned, [id]: state.owned[id] + count },
   };
 }
 
@@ -144,4 +187,54 @@ export function load(json: string | null, now: number): GameState {
   } catch {
     return fresh;
   }
+}
+
+const JA_UNITS = [
+  [1e12, '兆'],
+  [1e8, '億'],
+  [1e4, '万'],
+] as const;
+
+/** Whole gyoza in Japanese units: 9,999 → 1.23万 → 12.3万 → 1,234万 → 1.23億. */
+export function formatJa(n: number): string {
+  const whole = Math.floor(n);
+  for (const [size, unit] of JA_UNITS) {
+    if (whole < size) continue;
+    const v = whole / size;
+    const digits = v < 10 ? 2 : v < 100 ? 1 : 0;
+    // Round down so the display never claims gyoza that aren't there yet.
+    const shown = Math.floor(v * 10 ** digits) / 10 ** digits;
+    return `${shown.toLocaleString('ja-JP', { maximumFractionDigits: digits })}${unit}`;
+  }
+  return whole.toLocaleString('ja-JP');
+}
+
+/**
+ * Achievements are read straight off the state: `baked` and `owned` only ever
+ * grow, so once earned an achievement stays earned without being saved.
+ */
+export const ACHIEVEMENTS: readonly {
+  id: string;
+  name: string;
+  description: string;
+  earned: (state: GameState) => boolean;
+}[] = [
+  { id: 'baked1', name: 'はじめの一個', description: '餃子を1個焼いた', earned: (s) => s.baked >= 1 },
+  { id: 'baked100', name: '焼き手見習い', description: '餃子を100個焼いた', earned: (s) => s.baked >= 100 },
+  { id: 'baked1k', name: '焼き場の常連', description: '餃子を1,000個焼いた', earned: (s) => s.baked >= 1_000 },
+  { id: 'baked10k', name: '一万個の壁', description: '餃子を1万個焼いた', earned: (s) => s.baked >= 1e4 },
+  { id: 'baked1m', name: '餃子長者', description: '餃子を100万個焼いた', earned: (s) => s.baked >= 1e6 },
+  { id: 'baked100m', name: '餃子の星', description: '餃子を1億個焼いた', earned: (s) => s.baked >= 1e8 },
+  { id: 'shokunin1', name: 'いらっしゃい、おじさん', description: '餃子職人のおじさんを雇った', earned: (s) => s.owned.shokunin >= 1 },
+  { id: 'shokunin10', name: '職人チーム', description: '餃子職人のおじさんを10人雇った', earned: (s) => s.owned.shokunin >= 10 },
+  { id: 'kikai1', name: '機械化', description: '餃子の自動製造機を導入した', earned: (s) => s.owned.kikai >= 1 },
+  { id: 'senmonten1', name: '開店！', description: '町の餃子専門店を開いた', earned: (s) => s.owned.senmonten >= 1 },
+  { id: 'franchise1', name: '全国進出', description: '餃子フランチャイズを始めた', earned: (s) => s.owned.franchise >= 1 },
+  { id: 'kojo1', name: '世界の餃子', description: '世界の餃子工場を建てた', earned: (s) => s.owned.kojo >= 1 },
+  { id: 'rate10', name: '自動で焼ける', description: '毎秒10個焼けるようになった', earned: (s) => perSecond(s) >= 10 },
+  { id: 'rate1k', name: '餃子の滝', description: '毎秒1,000個焼けるようになった', earned: (s) => perSecond(s) >= 1_000 },
+];
+
+export function earnedAchievements(state: GameState): Set<string> {
+  return new Set(ACHIEVEMENTS.filter((a) => a.earned(state)).map((a) => a.id));
 }
