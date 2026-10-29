@@ -37,8 +37,32 @@ import {
   type GameState,
   type Upgrade,
 } from './game';
+import { playSound, type SoundName } from './sound';
 
 const STORAGE_KEY = 'gyoza-clicker:v1';
+const SETTINGS_KEY = 'gyoza-clicker:settings';
+
+/** Per-browser preferences, kept apart from the save so export/import leaves them be. */
+type Settings = { sound: boolean; scene: 'auto' | 'day' | 'night' };
+const DEFAULT_SETTINGS: Settings = { sound: false, scene: 'auto' };
+
+function loadSettings(): Settings {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<Settings>;
+    return {
+      sound: saved.sound === true,
+      scene: saved.scene === 'day' || saved.scene === 'night' ? saved.scene : 'auto',
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+/** Evening and night (18:00–5:59) by the player's own clock. */
+function isNightAt(ms: number): boolean {
+  const hour = new Date(ms).getHours();
+  return hour >= 18 || hour < 6;
+}
 const SAVE_EVERY_MS = 5_000;
 
 const format = formatJa;
@@ -82,6 +106,18 @@ export function GyozaClicker() {
   const [focusedUpgrade, setFocusedUpgrade] = useState<string | null>(null);
   const [golden, setGolden] = useState<Golden | null>(null);
   const [tab, setTab] = useState<Tab>('shop');
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const sound = (name: SoundName) => {
+    if (settingsRef.current.sound) playSound(name);
+  };
+  const changeSettings = (next: Settings) => {
+    setSettings(next);
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    } catch {}
+  };
   const nextId = useRef(0);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -96,6 +132,7 @@ export function GyozaClicker() {
     if (!before) return;
     const fresh = ACHIEVEMENTS.filter((a) => earned.has(a.id) && !before.has(a.id));
     if (fresh.length === 0) return;
+    sound('achievement');
     showToasts(
       fresh.map((a) => ({
         image: `/gyoza/${a.icon}.webp`,
@@ -140,6 +177,7 @@ export function GyozaClicker() {
     } catch {}
     // `tick` from the saved time adds what was baked while the tab was closed.
     setState(tick(load(saved, Date.now()), Date.now()));
+    setSettings(loadSettings());
     setLoaded(true);
   }, []);
 
@@ -161,6 +199,7 @@ export function GyozaClicker() {
   const onBake = (e: MouseEvent<HTMLButtonElement>) => {
     const n = perClick(state);
     setState((s) => click(tick(s, Date.now())));
+    sound('bake');
     setWobble((n) => n + 1);
     const box = e.currentTarget.getBoundingClientRect();
     // Keyboard clicks have no pointer position; float from the middle then.
@@ -172,11 +211,11 @@ export function GyozaClicker() {
   };
 
   const onBuy = (id: BuildingId, count: number) => {
-    setState((s) => {
-      const next = buy(tick(s, Date.now()), id, count);
-      if (next) save(next);
-      return next ?? s;
-    });
+    const next = buy(tick(stateRef.current, Date.now()), id, count);
+    if (!next) return;
+    setState(next);
+    save(next);
+    sound('buy');
   };
 
   const onGolden = () => {
@@ -185,6 +224,7 @@ export function GyozaClicker() {
     const { state: next, gained } = goldenClick(stateRef.current, effect, Date.now());
     setState(next);
     save(next);
+    sound('golden');
     showToasts([
       {
         image: `/gyoza/${effect.image}.webp`,
@@ -202,11 +242,11 @@ export function GyozaClicker() {
   };
 
   const onBuyUpgrade = (id: string) => {
-    setState((s) => {
-      const next = buyUpgrade(tick(s, Date.now()), id);
-      if (next) save(next);
-      return next ?? s;
-    });
+    const next = buyUpgrade(tick(stateRef.current, Date.now()), id);
+    if (!next) return;
+    setState(next);
+    save(next);
+    sound('buy');
   };
 
   const rate = currentPerSecond(state, state.at);
@@ -215,12 +255,23 @@ export function GyozaClicker() {
   const affordableUpgrades = upgrades.filter((u) => state.gyoza >= u.cost).length;
   const shownUpgrade = upgrades.find((u) => u.id === focusedUpgrade) ?? upgrades[0];
 
+  const night = settings.scene === 'night' || (settings.scene === 'auto' && loaded && isNightAt(state.at));
+
   return (
     <div
       className="min-h-dvh bg-cover bg-fixed bg-center"
       style={{ backgroundImage: 'url(/gyoza/background-shop.webp)' }}
     >
-      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 md:grid-cols-[1fr_26rem] md:py-10">
+      {/* Night: the same shop, darkened and lit by its lanterns. */}
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none fixed inset-0 transition-opacity duration-1000 ${night ? 'opacity-100' : 'opacity-0'}`}
+        style={{
+          background:
+            'radial-gradient(ellipse 40% 30% at 18% 8%, rgb(255 170 80 / 0.35), transparent), radial-gradient(ellipse 50% 35% at 50% 70%, rgb(255 190 110 / 0.18), transparent), rgb(20 24 60 / 0.55)',
+        }}
+      />
+      <div className="relative mx-auto grid max-w-6xl gap-6 px-4 py-6 md:grid-cols-[1fr_26rem] md:py-10">
         <section className="flex flex-col items-center gap-4">
           <img
             src="/gyoza/logo.webp"
@@ -475,7 +526,15 @@ export function GyozaClicker() {
               </ul>
             )}
 
-            {tab === 'more' && <MorePanel state={state} earnedCount={earned.size} onReplace={onReplace} />}
+            {tab === 'more' && (
+              <MorePanel
+                state={state}
+                earnedCount={earned.size}
+                onReplace={onReplace}
+                settings={settings}
+                onSettings={changeSettings}
+              />
+            )}
           </div>
         </section>
       </div>
@@ -533,10 +592,14 @@ function MorePanel({
   state,
   earnedCount,
   onReplace,
+  settings,
+  onSettings,
 }: {
   state: GameState;
   earnedCount: number;
   onReplace: (next: GameState) => void;
+  settings: Settings;
+  onSettings: (next: Settings) => void;
 }) {
   const [exported, setExported] = useState('');
   const [importText, setImportText] = useState('');
@@ -616,6 +679,42 @@ function MorePanel({
             </div>
           ))}
         </dl>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h3 className="font-bold">設定</h3>
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={settings.sound}
+            onChange={(e) => {
+              onSettings({ ...settings, sound: e.target.checked });
+              if (e.target.checked) playSound('bake');
+            }}
+            className="size-4 accent-amber-600"
+          />
+          効果音（焼く音・購入・金の餃子・実績）
+        </label>
+        <fieldset className="flex flex-wrap items-center gap-1.5">
+          <legend className="mb-1.5">お店の時間帯</legend>
+          {(
+            [
+              ['auto', '時計に合わせる'],
+              ['day', '昼'],
+              ['night', '夜'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={settings.scene === value}
+              onClick={() => onSettings({ ...settings, scene: value })}
+              className="cursor-pointer rounded-md border border-amber-700/40 px-2.5 py-1 font-bold aria-pressed:bg-amber-700 aria-pressed:text-white"
+            >
+              {label}
+            </button>
+          ))}
+        </fieldset>
       </section>
 
       <section className="flex flex-col gap-2">
