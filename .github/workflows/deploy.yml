@@ -1,7 +1,9 @@
 name: Build & Deploy
 
 # main への push と、Actions 画面からの手動実行（Run workflow）で動く。
-# build が成功したときだけ deploy する。
+# Vercel 公式ガイドと同じく、build と deploy を1つのジョブで順に行う。
+# build が失敗したら、そこでジョブが止まり deploy はされない。
+# https://vercel.com/kb/guide/how-can-i-use-github-actions-with-vercel
 on:
   push:
     branches: [main]
@@ -17,8 +19,12 @@ env:
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +36,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      # build の成果物は node_modules 内のファイルを参照するので、同じマシンに入れておく
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
@@ -40,50 +50,6 @@ jobs:
 
       - name: Build
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: vercel-output
-          path: .vercel/output
-          include-hidden-files: true
-          retention-days: 1
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: ${{ steps.deploy.outputs.url }}
-    steps:
-      # ビルド成果物の関数は node_modules の中のファイルを参照しているので、
-      # deploy 側でも同じ依存を入れておく必要がある（checkout は作業フォルダを
-      # 消すので、成果物のダウンロードより先にやる）
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: vercel-output
-          path: .vercel/output
-
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
-      # .vercel ごと成果物にすると環境変数の値まで残るので、output だけを受け渡し、
-      # プロジェクト設定はここで取り直す
-      - name: Pull Vercel project settings
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy
         id: deploy
