@@ -325,10 +325,13 @@ export function GyozaClicker() {
   return (
     // Phones: the whole game fits one screen, the plate on top and the menu
     // scrolling below it, so the plate never scrolls away while shopping.
+    // It is pinned with fixed + inset-0 rather than h-dvh: with Safari's page
+    // zoom (aA) on, iOS sizes dvh/vh for the unzoomed page, which left a blank
+    // band under the game.
     // touch-action: manipulation stops a fast double tap on the plate from
     // zooming the page; pinch zoom still works.
     <div
-      className="h-dvh touch-manipulation overflow-hidden bg-cover bg-center md:h-auto md:min-h-dvh md:overflow-visible md:bg-fixed"
+      className="fixed inset-0 touch-manipulation overflow-hidden bg-cover bg-center md:static md:min-h-dvh md:overflow-visible md:bg-fixed"
       style={{ backgroundImage: 'url(/gyoza/background-shop.webp)' }}
     >
       {/* Night: the same shop, darkened and lit by its lanterns. */}
@@ -504,9 +507,10 @@ export function GyozaClicker() {
                   const price = costOf(b, state.owned[b.id], count, priceFactor(state));
                   const affordable = state.gyoza >= price;
                   return (
-                    <li key={b.id} className="flex items-center gap-3 rounded-xl bg-white p-2 shadow-sm">
-                      <img src={`/gyoza/building-${b.id}.webp`} alt="" className="size-14 shrink-0" />
-                      <div className="min-w-0 flex-1">
+                    <li key={b.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-white p-2 shadow-sm">
+                      <img src={`/gyoza/building-${b.id}.webp`} alt="" className="size-12 shrink-0 sm:size-14" />
+                      {/* At least 9rem for the text; on a narrow or zoomed screen the buy button wraps below instead of squeezing it. */}
+                      <div className="min-w-0 flex-1 basis-36">
                         <p className="font-bold">
                           {b.name}
                           <span className="ml-2 text-sm font-normal text-stone-600">
@@ -534,7 +538,7 @@ export function GyozaClicker() {
                         type="button"
                         disabled={!affordable}
                         onClick={() => onBuy(b.id, count)}
-                        className="shrink-0 cursor-pointer rounded-lg bg-amber-600 px-3 py-2 text-sm font-bold text-white tabular-nums hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500"
+                        className="ml-auto shrink-0 cursor-pointer rounded-lg bg-amber-600 px-3 py-2 text-sm font-bold text-white tabular-nums hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500"
                       >
                         {format(price)}個
                         <br />
