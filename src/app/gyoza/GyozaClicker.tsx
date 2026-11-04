@@ -350,7 +350,7 @@ export function GyozaClicker() {
             alt="餃子クリッカー"
             width={1200}
             height={320}
-            className="w-full max-w-56 [@media(max-height:640px)]:max-w-40 md:max-w-md"
+            className="w-full max-w-56 max-md:[@media(max-height:640px)]:max-w-40 md:max-w-md"
           />
           <div className="rounded-2xl bg-white/85 px-6 py-1.5 text-center text-stone-900 shadow-lg md:px-8 md:py-3">
             <p className="text-[2rem] leading-tight font-bold tabular-nums md:text-[2.5rem]">
@@ -389,7 +389,7 @@ export function GyozaClicker() {
             onClick={onBake}
             className="relative cursor-pointer transition-transform select-none [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hover:scale-105 active:scale-95"
           >
-            <span key={wobble} className={`relative block w-56 [@media(max-height:640px)]:w-44 md:w-96 ${wobble ? 'gyoza-wobble' : ''}`}>
+            <span key={wobble} className={`relative block w-56 max-md:[@media(max-height:640px)]:w-44 md:w-96 ${wobble ? 'gyoza-wobble' : ''}`}>
               <img
                 src="/gyoza/plate.webp"
                 alt="餃子を焼く"
