@@ -93,8 +93,27 @@ const TABS: { id: Tab; label: string }[] = [
 
 type Floater = { id: number; x: number; y: number; n: number };
 type Toast = { id: number; image: string; title: string; description: string };
-/** Where a golden gyoza sits, in % of the viewport. */
+/** Where a golden gyoza sits: its top-left corner, in px from the top-left of the screen. */
 type Golden = { id: number; x: number; y: number };
+
+const GOLDEN_SIZE = 96;
+
+/**
+ * A spot inside the part of the page the player can see right now. On a phone
+ * that is the visual viewport, which moves away from the layout viewport when
+ * the page is zoomed in, so a spot in % of the layout viewport could land
+ * somewhere the player has to scroll to.
+ */
+function goldenSpot(): { x: number; y: number } {
+  const vv = window.visualViewport;
+  const left = vv?.offsetLeft ?? 0;
+  const top = vv?.offsetTop ?? 0;
+  const width = vv?.width ?? window.innerWidth;
+  const height = vv?.height ?? window.innerHeight;
+  const roomX = Math.max(0, width - GOLDEN_SIZE);
+  const roomY = Math.max(0, height * 0.8 - GOLDEN_SIZE);
+  return { x: left + Math.random() * roomX, y: top + height * 0.1 + Math.random() * roomY };
+}
 
 function save(state: GameState) {
   try {
@@ -173,7 +192,7 @@ export function GyozaClicker() {
       const { min, max } = goldenWaitMs(stateRef.current);
       const delay = min + Math.random() * (max - min);
       timer = setTimeout(() => {
-        setGolden({ id: nextId.current++, x: 8 + Math.random() * 76, y: 12 + Math.random() * 68 });
+        setGolden({ id: nextId.current++, ...goldenSpot() });
         timer = setTimeout(() => {
           setGolden(null);
           wait();
@@ -304,8 +323,12 @@ export function GyozaClicker() {
   const night = settings.scene === 'night' || (settings.scene === 'auto' && loaded && isNightAt(state.at));
 
   return (
+    // Phones: the whole game fits one screen, the plate on top and the menu
+    // scrolling below it, so the plate never scrolls away while shopping.
+    // touch-action: manipulation stops a fast double tap on the plate from
+    // zooming the page; pinch zoom still works.
     <div
-      className="min-h-dvh bg-cover bg-fixed bg-center"
+      className="h-dvh touch-manipulation overflow-hidden bg-cover bg-center md:h-auto md:min-h-dvh md:overflow-visible md:bg-fixed"
       style={{ backgroundImage: 'url(/gyoza/background-shop.webp)' }}
     >
       {/* Night: the same shop, darkened and lit by its lanterns. */}
@@ -317,17 +340,17 @@ export function GyozaClicker() {
             'radial-gradient(ellipse 40% 30% at 18% 8%, rgb(255 170 80 / 0.35), transparent), radial-gradient(ellipse 50% 35% at 50% 70%, rgb(255 190 110 / 0.18), transparent), rgb(20 24 60 / 0.55)',
         }}
       />
-      <div className="relative mx-auto grid max-w-6xl gap-6 px-4 py-6 md:grid-cols-[1fr_26rem] md:py-10">
-        <section className="flex flex-col items-center gap-4">
+      <div className="relative mx-auto flex h-full max-w-6xl flex-col gap-2 px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:grid md:h-auto md:grid-cols-[1fr_26rem] md:gap-6 md:px-4 md:py-10">
+        <section className="flex shrink-0 flex-col items-center gap-1.5 md:gap-4">
           <img
             src="/gyoza/logo.webp"
             alt="餃子クリッカー"
             width={1200}
             height={320}
-            className="w-full max-w-md"
+            className="w-full max-w-56 [@media(max-height:640px)]:max-w-40 md:max-w-md"
           />
-          <div className="rounded-2xl bg-white/85 px-8 py-3 text-center text-stone-900 shadow-lg">
-            <p className="text-[2.5rem] leading-tight font-bold tabular-nums">
+          <div className="rounded-2xl bg-white/85 px-6 py-1.5 text-center text-stone-900 shadow-lg md:px-8 md:py-3">
+            <p className="text-[2rem] leading-tight font-bold tabular-nums md:text-[2.5rem]">
               {format(state.gyoza)}
               <span className="ml-1 text-[1.25rem]">個</span>
             </p>
@@ -345,34 +368,47 @@ export function GyozaClicker() {
               </button>
             )}
           </div>
-          {buffs.length > 0 && (
-            <ul className="flex flex-wrap justify-center gap-2">
-              {buffs.map((b) => (
-                <li
-                  key={b.effect.kind}
-                  title={goldenDescription(state, b.effect)}
-                  className="flex items-center gap-1 rounded-full bg-amber-500 py-1 pr-3 pl-1.5 text-sm font-bold text-white shadow tabular-nums"
-                >
-                  <img src={`/gyoza/${b.effect.image}.webp`} alt="" className="size-6" />
-                  {b.effect.name} 残り{b.seconds}秒
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* Always the same height, so a buff coming or going never moves the plate. */}
+          <ul className="flex h-8 max-w-full flex-nowrap justify-center gap-1.5 md:gap-2">
+            {buffs.map((b) => (
+              <li
+                key={b.effect.kind}
+                title={goldenDescription(state, b.effect)}
+                className="flex shrink-0 items-center gap-1 rounded-full bg-amber-500 py-1 pr-2.5 pl-1.5 text-xs font-bold whitespace-nowrap text-white shadow tabular-nums md:pr-3 md:text-sm"
+              >
+                <img src={`/gyoza/${b.effect.image}.webp`} alt="" className="size-6" />
+                {b.effect.name} 残り{b.seconds}秒
+              </li>
+            ))}
+          </ul>
           <button
             type="button"
             onClick={onBake}
-            className="relative cursor-pointer transition-transform hover:scale-105 active:scale-95"
+            className="relative cursor-pointer transition-transform select-none [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hover:scale-105 active:scale-95"
           >
-            <img
-              key={wobble}
-              src="/gyoza/plate.webp"
-              alt="餃子を焼く"
-              width={1200}
-              height={750}
-              draggable={false}
-              className={`w-72 select-none drop-shadow-xl md:w-96 ${wobble ? 'gyoza-wobble' : ''}`}
-            />
+            <span key={wobble} className={`relative block w-56 [@media(max-height:640px)]:w-44 md:w-96 ${wobble ? 'gyoza-wobble' : ''}`}>
+              <img
+                src="/gyoza/plate.webp"
+                alt="餃子を焼く"
+                width={1200}
+                height={750}
+                draggable={false}
+                className="w-full select-none drop-shadow-xl"
+              />
+              {/* Night: the plate takes on the room's light, cut to the plate's own shape. */}
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-0 transition-opacity duration-1000 ${night ? 'opacity-100' : 'opacity-0'}`}
+                style={{
+                  background:
+                    'radial-gradient(ellipse 60% 55% at 35% 20%, rgb(255 180 90 / 0.28), transparent), rgb(20 24 60 / 0.5)',
+                  maskImage: 'url(/gyoza/plate.webp)',
+                  maskSize: '100% 100%',
+                  WebkitMaskImage: 'url(/gyoza/plate.webp)',
+                  WebkitMaskSize: '100% 100%',
+                }}
+              />
+            </span>
             {floaters.map((f) => (
               <span
                 key={f.id}
@@ -386,7 +422,7 @@ export function GyozaClicker() {
           </button>
         </section>
 
-        <section className="flex flex-col overflow-hidden rounded-2xl bg-amber-50/95 text-stone-900 shadow-xl md:sticky md:top-6 md:h-[calc(100dvh-3rem)]">
+        <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-amber-50/95 text-stone-900 shadow-xl md:sticky md:top-6 md:h-[calc(100dvh-3rem)] md:flex-none">
           <div role="tablist" aria-label="お店のメニュー" className="flex shrink-0 gap-1 overflow-x-auto border-b-2 border-amber-800/20 px-3 pt-3">
             {TABS.map((t) => (
               <button
@@ -603,8 +639,8 @@ export function GyozaClicker() {
           type="button"
           aria-label="金の餃子をつかまえる"
           onClick={onGolden}
-          className="gyoza-golden fixed z-10 cursor-pointer"
-          style={{ left: `${golden.x}%`, top: `${golden.y}%` }}
+          className="gyoza-golden fixed z-10 cursor-pointer select-none [-webkit-touch-callout:none]"
+          style={{ left: golden.x, top: golden.y }}
         >
           <img
             src="/gyoza/golden.webp"
