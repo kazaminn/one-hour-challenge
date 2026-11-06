@@ -262,6 +262,8 @@ function update(dt){
     const fr=Z[i]>0?.6:5.5;const e=Math.exp(-fr*dt);VX[i]*=e;VY[i]*=e;VR[i]*=Math.exp(-3*dt);
     const sp=Math.hypot(VX[i],VY[i]);R[i]+=(VR[i]+(Z[i]<=0?sp*.004*(i%2?1:-1):0))*dt;
     x+=VX[i]*dt;y+=VY[i]*dt;
+    // 端に張りつかないよう、地面の葉はゆるく内側へ戻す
+    if(Z[i]<=0){const M=40;if(x<M)VX[i]+=(M-x)*16*dt;else if(x>VW-M)VX[i]-=(x-VW+M)*16*dt;if(y<M)VY[i]+=(M-y)*16*dt;else if(y>VH-M)VY[i]-=(y-VH+M)*16*dt}
     if(x<6){x=6;VX[i]=Math.abs(VX[i])*.4}if(x>VW-6){x=VW-6;VX[i]=-Math.abs(VX[i])*.4}if(y<6){y=6;VY[i]=Math.abs(VY[i])*.4}if(y>VH-6){y=VH-6;VY[i]=-Math.abs(VY[i])*.4}
     X[i]=x;Y[i]=y;
     if(fd<pit.r*.9&&Z[i]<40)BURN[i]=.001;
@@ -324,7 +326,8 @@ function draw(){
   for(const s of steam){ctx.fillStyle=`rgba(255,255,255,${(1-s.t/s.life)*.5})`;ctx.beginPath();ctx.arc(s.x,s.y,s.s,0,7);ctx.fill()}
   // 木（上から見た樹冠）
   for(const t of trees){const sw=Math.sin(time*.8+t.sway)*3+(wind.gust>0?Math.sin(time*6)*6:0);
-    ctx.save();ctx.translate(t.x+sw,t.y);ctx.globalAlpha=.93;
+    ctx.save();const under=(pointer.inside||pointer.down)&&Math.hypot(pointer.x-t.x,pointer.y-t.y)<t.r*1.15;t.fade=(t.fade??.93)+((under?.22:.93)-(t.fade??.93))*.12;
+    ctx.translate(t.x+sw,t.y);ctx.globalAlpha=t.fade;
     for(const b of t.blobs){const g=ctx.createRadialGradient(b.x-b.r*.3,b.y-b.r*.3,b.r*.1,b.x,b.y,b.r);g.addColorStop(0,shade(t.col,45));g.addColorStop(.6,b.c);g.addColorStop(1,shade(t.col,-70));ctx.fillStyle=g;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,7);ctx.fill()}
     ctx.restore()}
   ctx.globalAlpha=1;
