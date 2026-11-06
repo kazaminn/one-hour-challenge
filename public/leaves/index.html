@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>落ち葉と焼き芋</title>
+<meta name="description" content="何千枚もの落ち葉を熊手とブロワーで集めて、たき火で焼き芋を焼く庭">
+<style>
+:root{--panel:rgba(30,20,12,.82);--line:rgba(255,220,170,.35);--text:#fff8ec;--muted:#f0d9b8;--accent:#ffc04d;--fire:#ff7a2f;
+  --font:"BIZ UDPGothic","Hiragino Sans","Yu Gothic UI","Meiryo",system-ui,sans-serif}
+*{box-sizing:border-box;-webkit-user-select:none;user-select:none}
+html,body{margin:0;height:100%;overflow:hidden;background:#3c5a24;color:var(--text);font-family:var(--font)}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:none}
+button{font:inherit;color:inherit}
+.panel{position:fixed;background:var(--panel);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 8px 30px rgba(0,0,0,.35)}
+#hud{top:12px;left:12px;padding:12px 16px;width:min(330px,calc(100vw - 24px))}
+#hud h1{margin:0 0 6px;font-size:22px;letter-spacing:.06em}
+.stat{display:flex;justify-content:space-between;align-items:baseline;font-size:17px;margin:4px 0;color:var(--muted)}
+.stat b{font-size:24px;color:var(--text);font-variant-numeric:tabular-nums}
+.bar{height:14px;border-radius:999px;background:rgba(255,255,255,.15);overflow:hidden;margin:2px 0 8px}
+.bar i{display:block;height:100%;width:0;border-radius:inherit;transition:width .2s}
+#fireBar i{background:linear-gradient(90deg,#ffcf4d,#ff5a1f)}
+#imoBar i{background:linear-gradient(90deg,#b0477a,#ffd36b)}
+#tools{top:12px;right:12px;padding:8px;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;max-width:calc(100vw - 24px)}
+.btn{background:rgba(255,255,255,.1);border:2px solid rgba(255,230,190,.35);border-radius:12px;padding:8px 14px;font-size:18px;font-weight:700;cursor:pointer;min-height:48px}
+.btn:hover{background:rgba(255,255,255,.2)}
+.btn[aria-pressed="true"]{background:var(--accent);color:#2a1606;border-color:#fff3d6}
+.btn:focus-visible{outline:3px solid #fff;outline-offset:2px}
+#hint{left:50%;bottom:14px;transform:translateX(-50%);padding:10px 18px;font-size:17px;text-align:center;max-width:calc(100vw - 24px);transition:opacity .6s}
+#toast{position:fixed;left:50%;top:22%;transform:translate(-50%,-50%) scale(.6);opacity:0;pointer-events:none;text-align:center;font-size:clamp(30px,6vw,60px);font-weight:900;color:#fff4d6;text-shadow:0 4px 0 #7a3b12,0 0 30px rgba(255,170,60,.8);transition:all .35s cubic-bezier(.2,1.6,.4,1)}
+#toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+#toast small{display:block;font-size:.42em;margin-top:6px;text-shadow:0 2px 0 #7a3b12}
+#start{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at center,rgba(40,20,5,.55),rgba(20,10,0,.85));z-index:10;text-align:center;padding:24px}
+#start h2{font-size:clamp(40px,9vw,96px);margin:0;letter-spacing:.1em;text-shadow:0 6px 0 #6b2f0c,0 0 50px rgba(255,150,40,.7)}
+#start p{font-size:20px;line-height:1.7;color:var(--muted);margin:16px 0 22px}
+#start .btn{font-size:24px;padding:14px 32px;background:var(--accent);color:#2a1606}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:720px){#hud{padding:8px 12px;width:auto;right:12px}#hud h1{display:none}#tools{top:auto;bottom:70px;left:12px;right:12px;justify-content:center}.btn{font-size:16px;padding:6px 10px}}
+</style>
+</head>
+<body>
+<canvas id="cv" role="img" aria-label="落ち葉が積もった庭。熊手やブロワーで葉を集め、中央のたき火に入れると焼き芋が焼けます"></canvas>
+
+<section id="hud" class="panel" aria-label="庭のようす">
+  <h1>🍂 落ち葉と焼き芋</h1>
+  <div class="stat">庭のきれいさ<b id="clean">0%</b></div>
+  <div class="stat">たき火の勢い<b id="fireTxt">消えている</b></div>
+  <div class="bar" id="fireBar"><i></i></div>
+  <div class="stat">焼き芋の焼け具合<b id="imoTxt">0%</b></div>
+  <div class="bar" id="imoBar"><i></i></div>
+  <div class="stat">焼けた焼き芋<b id="imoCount">0本</b></div>
+</section>
+
+<nav id="tools" class="panel" aria-label="道具">
+  <button class="btn" data-tool="rake" aria-pressed="true">🧹 熊手 <small>1</small></button>
+  <button class="btn" data-tool="blow" aria-pressed="false">💨 吹く <small>2</small></button>
+  <button class="btn" data-tool="suck" aria-pressed="false">🌀 吸う <small>3</small></button>
+  <button class="btn" id="dogBtn">🐕 ポチを呼ぶ</button>
+  <button class="btn" id="windBtn">🍃 突風</button>
+  <button class="btn" id="soundBtn" aria-pressed="true">🔊 音</button>
+</nav>
+
+<div id="hint" class="panel">押したままドラッグで葉を動かせます。真ん中のたき火に葉を入れると焼き芋が焼けます</div>
+<div id="toast" aria-hidden="true"></div>
+<div class="sr" id="live" aria-live="polite"></div>
+
+<div id="start">
+  <div>
+    <h2>落ち葉と焼き芋</h2>
+    <p>朝の庭に、葉っぱが<b id="nLeaves">たくさん</b>積もっています。<br>熊手で寄せて、ブロワーで吹いて、たき火にくべて、<br>焼き芋を焼きましょう。</p>
+    <button class="btn" id="go">庭に出る</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+const cv=document.getElementById("cv"),ctx=cv.getContext("2d");
+let DPR=1,VW=0,VH=0;
+const REDUCED=matchMedia("(prefers-reduced-motion: reduce)").matches;
+const rand=(a,b)=>a+Math.random()*(b-a);
+
+// ============ 葉のスプライト ============
+const PALETTE=["#e8442e","#f26b1d","#f5a623","#ffd23f","#c9302c","#b5651d","#e07a2f","#ffb703","#9b2915","#d9a441"];
+const SPR=[];const SPR_SIZE=64;
+function leafPath(g,shape){
+  g.beginPath();
+  if(shape===0){ // もみじ風
+    const pts=7;for(let i=0;i<=pts*2;i++){const a=-Math.PI/2+i*Math.PI/pts*.95-Math.PI*.45/pts;const r=i%2?11:28;const aa=-Math.PI/2+(i/(pts*2))*Math.PI*2;g.lineTo(Math.cos(aa)*r,Math.sin(aa)*r*.95)}
+    g.closePath();
+  }else if(shape===1){ // いちょう風（扇）
+    g.moveTo(0,22);g.lineTo(-4,6);g.quadraticCurveTo(-30,-2,-24,-18);g.quadraticCurveTo(-12,-28,-2,-20);g.lineTo(0,-14);g.lineTo(2,-20);g.quadraticCurveTo(12,-28,24,-18);g.quadraticCurveTo(30,-2,4,6);g.closePath();
+  }else{ // だ円の葉
+    g.moveTo(0,-28);g.bezierCurveTo(18,-18,18,14,0,26);g.bezierCurveTo(-18,14,-18,-18,0,-28);g.closePath();
+  }
+}
+function makeSprites(){
+  for(let s=0;s<3;s++)for(const col of PALETTE){
+    const c=document.createElement("canvas");c.width=c.height=SPR_SIZE;const g=c.getContext("2d");g.translate(32,32);
+    leafPath(g,s);const gr=g.createLinearGradient(-20,-20,20,20);gr.addColorStop(0,shade(col,30));gr.addColorStop(1,shade(col,-35));g.fillStyle=gr;g.fill();
+    g.strokeStyle=shade(col,-60);g.lineWidth=1.6;g.stroke();
+    g.strokeStyle="rgba(60,25,5,.45)";g.lineWidth=1.4;g.beginPath();g.moveTo(0,24);g.lineTo(0,-20);
+    if(s!==1){for(let k=-1;k<=1;k+=2){g.moveTo(0,4);g.lineTo(k*12,-10);g.moveTo(0,12);g.lineTo(k*10,2)}}g.stroke();
+    if(s===0){g.strokeStyle=shade(col,-50);g.lineWidth=2.4;g.beginPath();g.moveTo(0,10);g.lineTo(0,30);g.stroke()}
+    SPR.push(c);
+  }
+}
+function shade(hex,amt){const n=parseInt(hex.slice(1),16);let r=(n>>16)+amt,g=(n>>8&255)+amt,b=(n&255)+amt;r=Math.max(0,Math.min(255,r));g=Math.max(0,Math.min(255,g));b=Math.max(0,Math.min(255,b));return`rgb(${r},${g},${b})`}
+
+// ============ 庭 ============
+let ground=null,trees=[],pit={x:0,y:0,r:70};
+function makeGround(){
+  ground=document.createElement("canvas");ground.width=VW*DPR;ground.height=VH*DPR;const g=ground.getContext("2d");g.scale(DPR,DPR);
+  const bg=g.createLinearGradient(0,0,VW,VH);bg.addColorStop(0,"#5d7f2e");bg.addColorStop(1,"#47691f");g.fillStyle=bg;g.fillRect(0,0,VW,VH);
+  // 芝のむら
+  for(let i=0;i<VW*VH/900;i++){const x=Math.random()*VW,y=Math.random()*VH,r=rand(20,70);const gr=g.createRadialGradient(x,y,0,x,y,r);const c=Math.random()<.5?"rgba(120,150,50,.18)":"rgba(40,70,20,.18)";gr.addColorStop(0,c);gr.addColorStop(1,"rgba(0,0,0,0)");g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2)}
+  // 草
+  g.lineCap="round";
+  for(let i=0;i<VW*VH/60;i++){const x=Math.random()*VW,y=Math.random()*VH,l=rand(3,8);g.strokeStyle=`hsla(${rand(75,100)},${rand(35,55)}%,${rand(22,42)}%,.7)`;g.lineWidth=1.2;g.beginPath();g.moveTo(x,y);g.lineTo(x+rand(-2,2),y-l);g.stroke()}
+  // 飛び石
+  const n=Math.ceil(VW/90);for(let i=0;i<n;i++){const t=i/(n-1);const x=t*VW,y=VH*.72+Math.sin(t*5)*VH*.07;if(Math.hypot(x-pit.x,y-pit.y)<pit.r*1.8)continue;
+    g.save();g.translate(x,y);g.rotate(rand(-.5,.5));g.fillStyle="rgba(0,0,0,.25)";g.beginPath();g.ellipse(3,4,rand(26,34),rand(18,24),0,0,7);g.fill();
+    const sg=g.createRadialGradient(-8,-6,2,0,0,34);sg.addColorStop(0,"#d6d0c4");sg.addColorStop(1,"#8f887c");g.fillStyle=sg;g.beginPath();g.ellipse(0,0,rand(26,32),rand(17,22),0,0,7);g.fill();g.restore()}
+  // たき火の石囲い（土）
+  const dg=g.createRadialGradient(pit.x,pit.y,10,pit.x,pit.y,pit.r*1.25);dg.addColorStop(0,"#3a2614");dg.addColorStop(.75,"#5b3d22");dg.addColorStop(1,"rgba(91,61,34,0)");g.fillStyle=dg;g.beginPath();g.arc(pit.x,pit.y,pit.r*1.25,0,7);g.fill();
+  for(let i=0;i<16;i++){const a=i/16*Math.PI*2;const x=pit.x+Math.cos(a)*pit.r*1.05,y=pit.y+Math.sin(a)*pit.r*1.05;g.fillStyle="rgba(0,0,0,.3)";g.beginPath();g.ellipse(x+2,y+3,15,11,a,0,7);g.fill();
+    const sg=g.createRadialGradient(x-4,y-4,1,x,y,16);sg.addColorStop(0,"#bdb5a8");sg.addColorStop(1,"#6e675d");g.fillStyle=sg;g.beginPath();g.ellipse(x,y,14,10,a,0,7);g.fill()}
+  // 縁側（下端）
+  // 木の根元の影
+  for(const t of trees){const gr=g.createRadialGradient(t.x,t.y,0,t.x,t.y,t.r*1.1);gr.addColorStop(0,"rgba(20,35,10,.45)");gr.addColorStop(1,"rgba(20,35,10,0)");g.fillStyle=gr;g.beginPath();g.arc(t.x,t.y,t.r*1.1,0,7);g.fill()}
+}
+function makeTrees(){
+  trees=[];const spots=[[-.02,-.04],[1.03,.02],[.45,-.12],[-.04,.85],[1.04,.95]];
+  for(const[fx,fy]of spots){const r=Math.min(VW,VH)*rand(.2,.27);const col=["#d9481c","#f0a020","#c23b22","#e8b830"][Math.floor(Math.random()*4)];
+    const blobs=[];for(let i=0;i<14;i++){const a=Math.random()*7,d=Math.random()*r*.7;blobs.push({x:Math.cos(a)*d,y:Math.sin(a)*d,r:r*rand(.35,.6),c:shade(col,rand(-40,30)|0)})}
+    trees.push({x:fx*VW,y:fy*VH,r,col,blobs,sway:Math.random()*7})}
+}
+
+// ============ 葉 ============
+const MAX=4200;
+const X=new Float32Array(MAX),Y=new Float32Array(MAX),Z=new Float32Array(MAX),VX=new Float32Array(MAX),VY=new Float32Array(MAX),VZ=new Float32Array(MAX),
+  R=new Float32Array(MAX),VR=new Float32Array(MAX),TILT=new Float32Array(MAX),SZ=new Float32Array(MAX),BURN=new Float32Array(MAX),SP=new Uint8Array(MAX),PH=new Float32Array(MAX);
+let n=0,target=2600;
+function addLeaf(x,y,z){if(n>=MAX)return;const i=n++;X[i]=x;Y[i]=y;Z[i]=z;VX[i]=VY[i]=0;VZ[i]=0;R[i]=Math.random()*7;VR[i]=0;TILT[i]=Math.random()*7;SZ[i]=rand(18,30);BURN[i]=0;SP[i]=Math.floor(Math.random()*SPR.length);PH[i]=Math.random()*7}
+function removeLeaf(i){n--;if(i===n)return;X[i]=X[n];Y[i]=Y[n];Z[i]=Z[n];VX[i]=VX[n];VY[i]=VY[n];VZ[i]=VZ[n];R[i]=R[n];VR[i]=VR[n];TILT[i]=TILT[n];SZ[i]=SZ[n];BURN[i]=BURN[n];SP[i]=SP[n];PH[i]=PH[n]}
+function scatter(){n=0;for(let k=0;k<target;k++){let x,y;if(Math.random()<.55){const t=trees[Math.floor(Math.random()*trees.length)];const a=Math.random()*7,d=Math.sqrt(Math.random())*t.r*1.3;x=t.x+Math.cos(a)*d;y=t.y+Math.sin(a)*d}else{x=Math.random()*VW;y=Math.random()*VH}
+  x=Math.max(10,Math.min(VW-10,x));y=Math.max(10,Math.min(VH-10,y));if(Math.hypot(x-pit.x,y-pit.y)<pit.r*1.1)continue;addLeaf(x,y,0)}}
+
+// 密度グリッド（葉の山）
+const CELL=14;let gw=0,gh=0,grid=null;
+function buildGrid(){gw=Math.ceil(VW/CELL)+1;gh=Math.ceil(VH/CELL)+1;grid=new Uint16Array(gw*gh)}
+
+// ============ 状態 ============
+let tool="rake",pointer={x:-999,y:-999,px:-999,py:-999,vx:0,vy:0,down:false,inside:false};
+let wind={x:0,y:0,tx:8,ty:3,gust:0,gx:0,gy:0};
+let fuel=0,fire=0,imo=0,imoCount=0,burned=0,time=0;
+let flames=[],smoke=[],embers=[],streaks=[],potatoes=[],steam=[];
+let dog=null,nextDog=40,nextGust=18;
+let started=false;
+
+function resize(){
+  DPR=Math.min(2,devicePixelRatio||1);const oW=VW,oH=VH;VW=innerWidth;VH=innerHeight;cv.width=VW*DPR;cv.height=VH*DPR;
+  pit={x:VW*.5,y:VH*.52,r:Math.max(52,Math.min(80,Math.min(VW,VH)*.09))};
+  if(oW){const sx=VW/oW,sy=VH/oH;for(let i=0;i<n;i++){X[i]*=sx;Y[i]*=sy}for(const t of trees){t.x*=sx;t.y*=sy}}else makeTrees();
+  buildGrid();makeGround();
+}
+
+// ============ 音 ============
+let AC=null,noiseGain=null,noiseFilt=null,soundOn=true;
+function initAudio(){if(AC)return;try{AC=new (window.AudioContext||window.webkitAudioContext)();
+  const buf=AC.createBuffer(1,AC.sampleRate*2,AC.sampleRate);const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+  const src=AC.createBufferSource();src.buffer=buf;src.loop=true;noiseFilt=AC.createBiquadFilter();noiseFilt.type="bandpass";noiseFilt.frequency.value=600;noiseFilt.Q.value=.7;
+  noiseGain=AC.createGain();noiseGain.gain.value=0;src.connect(noiseFilt).connect(noiseGain).connect(AC.destination);src.start()}catch(e){AC=null}}
+function crackle(vol){if(!AC||!soundOn)return;const t=AC.currentTime;const o=AC.createBufferSource();const b=AC.createBuffer(1,600,AC.sampleRate);const d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3);o.buffer=b;const g=AC.createGain();g.gain.value=vol;const f=AC.createBiquadFilter();f.type="highpass";f.frequency.value=1500+Math.random()*2500;o.connect(f).connect(g).connect(AC.destination);o.start(t)}
+function pop(){if(!AC||!soundOn)return;const t=AC.currentTime;const o=AC.createOscillator(),g=AC.createGain();o.type="triangle";o.frequency.setValueAtTime(380,t);o.frequency.exponentialRampToValueAtTime(900,t+.12);g.gain.setValueAtTime(.25,t);g.gain.exponentialRampToValueAtTime(.001,t+.35);o.connect(g).connect(AC.destination);o.start(t);o.stop(t+.4);
+  [0,.12,.24].forEach((dt,i)=>{const o2=AC.createOscillator(),g2=AC.createGain();o2.type="sine";o2.frequency.value=[784,988,1319][i];g2.gain.setValueAtTime(0,t+.15+dt);g2.gain.linearRampToValueAtTime(.12,t+.17+dt);g2.gain.exponentialRampToValueAtTime(.001,t+.6+dt);o2.connect(g2).connect(AC.destination);o2.start(t+.15+dt);o2.stop(t+.7+dt)})}
+function woof(){if(!AC||!soundOn)return;const t=AC.currentTime;for(let k=0;k<2;k++){const o=AC.createOscillator(),g=AC.createGain();o.type="sawtooth";const s=t+k*.28;o.frequency.setValueAtTime(520,s);o.frequency.exponentialRampToValueAtTime(260,s+.13);g.gain.setValueAtTime(.0001,s);g.gain.exponentialRampToValueAtTime(.18,s+.02);g.gain.exponentialRampToValueAtTime(.001,s+.16);const f=AC.createBiquadFilter();f.type="lowpass";f.frequency.value=1400;o.connect(f).connect(g).connect(AC.destination);o.start(s);o.stop(s+.2)}}
+
+// ============ 入力 ============
+cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);initAudio();if(AC&&AC.state==="suspended")AC.resume();setP(e);pointer.px=pointer.x;pointer.py=pointer.y;pointer.down=true;hideHint()});
+cv.addEventListener("pointermove",e=>{setP(e);pointer.inside=true});
+cv.addEventListener("pointerup",()=>{pointer.down=false});
+cv.addEventListener("pointercancel",()=>{pointer.down=false});
+cv.addEventListener("pointerleave",()=>{pointer.inside=false});
+cv.addEventListener("contextmenu",e=>e.preventDefault());
+function setP(e){pointer.x=e.clientX;pointer.y=e.clientY}
+document.querySelectorAll("[data-tool]").forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+function setTool(t){tool=t;document.querySelectorAll("[data-tool]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.tool===t)))}
+document.getElementById("dogBtn").onclick=()=>{initAudio();callDog()};
+document.getElementById("windBtn").onclick=()=>{initAudio();gust()};
+const sBtn=document.getElementById("soundBtn");sBtn.onclick=()=>{soundOn=!soundOn;sBtn.setAttribute("aria-pressed",String(soundOn));sBtn.textContent=soundOn?"🔊 音":"🔇 音なし"};
+addEventListener("keydown",e=>{if(e.key==="1")setTool("rake");else if(e.key==="2")setTool("blow");else if(e.key==="3")setTool("suck");else if(e.key==="d"||e.key==="D")callDog();else if(e.key==="w"||e.key==="W")gust()});
+addEventListener("resize",resize);
+let hintHidden=false;function hideHint(){if(hintHidden)return;hintHidden=true;setTimeout(()=>document.getElementById("hint").style.opacity="0",4000)}
+
+// ============ イベント ============
+function gust(){const a=Math.random()*Math.PI*2;wind.gust=3.2;wind.gx=Math.cos(a)*260;wind.gy=Math.sin(a)*260;
+  for(let k=0;k<40;k++)streaks.push({x:Math.random()*VW,y:Math.random()*VH,l:rand(60,160),t:0,life:rand(.8,1.6)});say("突風！")}
+function callDog(){if(dog)return;const fromLeft=Math.random()<.5;
+  // いちばん葉が多い場所をめざす
+  let best=0,bx=VW/2,by=VH/2;for(let gy=1;gy<gh-1;gy+=2)for(let gx=1;gx<gw-1;gx+=2){const c=grid[gy*gw+gx];if(c>best){best=c;bx=gx*CELL;by=gy*CELL}}
+  dog={x:fromLeft?-60:VW+60,y:by+rand(-30,30),tx:bx,ty:by,state:"run",t:0,dir:fromLeft?1:-1,jump:0,exitX:fromLeft?VW+80:-80};woof();say("ポチがやってきた！")}
+function toast(main,sub){const el=document.getElementById("toast");el.innerHTML=main+(sub?`<small>${sub}</small>`:"");el.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove("show"),2400)}
+function say(m){document.getElementById("live").textContent=m}
+
+// ============ 更新 ============
+function update(dt){
+  time+=dt;
+  // 風
+  if(Math.random()<dt*.15){wind.tx=rand(-25,25);wind.ty=rand(-12,18)}
+  wind.x+=(wind.tx-wind.x)*dt*.5;wind.y+=(wind.ty-wind.y)*dt*.5;
+  let gx=0,gy=0;if(wind.gust>0){wind.gust-=dt;const k=Math.sin(Math.min(1,wind.gust/3.2)*Math.PI);gx=wind.gx*k;gy=wind.gy*k}
+  nextGust-=dt;if(nextGust<=0){gust();nextGust=rand(35,70)}
+  nextDog-=dt;if(nextDog<=0&&!dog){callDog();nextDog=rand(60,110)}
+  // ポインタ速度
+  const pvx=(pointer.x-pointer.px)/Math.max(dt,1e-3),pvy=(pointer.y-pointer.py)/Math.max(dt,1e-3);
+  pointer.vx+=(pvx-pointer.vx)*Math.min(1,dt*20);pointer.vy+=(pvy-pointer.vy)*Math.min(1,dt*20);pointer.px=pointer.x;pointer.py=pointer.y;
+  // 音（ブロワー）
+  if(AC&&noiseGain){const on=soundOn&&pointer.down&&tool!=="rake";noiseGain.gain.setTargetAtTime(on?.16:0,AC.currentTime,.08);noiseFilt.frequency.setTargetAtTime(tool==="suck"?380:700,AC.currentTime,.1)}
+  // 密度
+  grid.fill(0);for(let i=0;i<n;i++){if(Z[i]>6)continue;const cx=X[i]/CELL|0,cy=Y[i]/CELL|0;if(cx>=0&&cy>=0&&cx<gw&&cy<gh)grid[cy*gw+cx]++}
+  const P=pointer,down=P.down;const RR=tool==="rake"?70:tool==="blow"?150:170;
+  // 犬
+  if(dog){const d=dog;d.t+=dt;
+    if(d.state==="run"){const dx=d.tx-d.x,dy=d.ty-d.y,l=Math.hypot(dx,dy);if(l<20){d.state="jump";d.jump=0;woof()}else{d.x+=dx/l*300*dt;d.y+=dy/l*300*dt;d.dir=Math.sign(dx)||d.dir}}
+    else if(d.state==="jump"){d.jump+=dt;if(d.jump>.25&&!d.boom){d.boom=true;for(let i=0;i<n;i++){const dx=X[i]-d.x,dy=Y[i]-d.y,l=Math.hypot(dx,dy);if(l<130){const f=(1-l/130);VX[i]+=dx/(l+1)*420*f+rand(-60,60);VY[i]+=dy/(l+1)*420*f+rand(-60,60);VZ[i]+=rand(220,520)*f;VR[i]+=rand(-14,14)}}}if(d.jump>1.2){d.state="leave"}}
+    else{const dx=d.exitX-d.x;d.dir=Math.sign(dx);d.x+=Math.sign(dx)*340*dt;d.y+=Math.sin(d.t*3)*40*dt;if(Math.abs(dx)<20)dog=null}
+    if(dog&&dog.state!=="jump"){for(let i=0;i<n;i++){const dx=X[i]-dog.x,dy=Y[i]-dog.y;if(dx*dx+dy*dy<900){const l=Math.hypot(dx,dy)+1;VX[i]+=dx/l*120;VY[i]+=dy/l*120;VZ[i]+=rand(30,120)}}}}
+  // 葉
+  let fireUp=fire;
+  for(let i=n-1;i>=0;i--){
+    let x=X[i],y=Y[i];
+    if(BURN[i]>0){BURN[i]+=dt*1.6;Z[i]+=dt*12;R[i]+=dt*2;if(BURN[i]>1){removeLeaf(i);fuel+=1;burned++;if(Math.random()<.5)crackle(.15);continue}continue}
+    const air=Z[i]>.5;
+    // 道具
+    if(down){const dx=x-P.x,dy=y-P.y,d2=dx*dx+dy*dy;if(d2<RR*RR){const d=Math.sqrt(d2)+.001,f=1-d/RR;
+      if(tool==="rake"){const k=Math.min(1,dt*14*f);VX[i]+=(P.vx-VX[i])*k;VY[i]+=(P.vy-VY[i])*k;if(Math.hypot(P.vx,P.vy)>250&&Math.random()<dt*3*f)VZ[i]+=rand(40,120)}
+      else if(tool==="blow"){VX[i]+=dx/d*1500*f*dt;VY[i]+=dy/d*1500*f*dt;if(Math.random()<dt*6*f)VZ[i]+=rand(80,260)*f;VR[i]+=rand(-30,30)*dt}
+      else{const k=d<25?.3:1;VX[i]-=dx/d*1100*f*dt*k;VY[i]-=dy/d*1100*f*dt*k;VX[i]+=-dy/d*300*f*dt;VY[i]+=dx/d*300*f*dt;if(Math.random()<dt*2*f)VZ[i]+=rand(20,80)}}}
+    // 山の広がり
+    if(!air){const cx=x/CELL|0,cy=y/CELL|0;if(cx>0&&cy>0&&cx<gw-1&&cy<gh-1){const c=grid[cy*gw+cx];if(c>5){const gxx=grid[cy*gw+cx-1]-grid[cy*gw+cx+1],gyy=grid[(cy-1)*gw+cx]-grid[(cy+1)*gw+cx];VX[i]+=gxx*5*dt*(c-5)*.25;VY[i]+=gyy*5*dt*(c-5)*.25}}}
+    // 風
+    const wf=air?1:.04;VX[i]+=(wind.x+gx)*wf*dt*(air?1.2:1);VY[i]+=(wind.y+gy)*wf*dt*(air?1.2:1);
+    if(!air&&wind.gust>0&&Math.random()<dt*.9){VZ[i]+=rand(40,160);}
+    // たき火の上昇気流
+    const fdx=x-pit.x,fdy=y-pit.y,fd=Math.hypot(fdx,fdy);
+    if(air&&fd<pit.r*1.6&&fireUp>.05)VZ[i]+=fireUp*220*dt;
+    // 重力とひらひら
+    if(air||VZ[i]>0){VZ[i]-=300*dt;if(VZ[i]<-55)VZ[i]+=(-55-VZ[i])*Math.min(1,dt*6);PH[i]+=dt*(3+SZ[i]*.05);VX[i]+=Math.sin(PH[i])*70*dt;TILT[i]+=dt*4;Z[i]+=VZ[i]*dt;if(Z[i]<=0){Z[i]=0;VZ[i]=0}}
+    // 摩擦
+    const fr=Z[i]>0?.6:5.5;const e=Math.exp(-fr*dt);VX[i]*=e;VY[i]*=e;VR[i]*=Math.exp(-3*dt);
+    const sp=Math.hypot(VX[i],VY[i]);R[i]+=(VR[i]+(Z[i]<=0?sp*.004*(i%2?1:-1):0))*dt;
+    x+=VX[i]*dt;y+=VY[i]*dt;
+    if(x<6){x=6;VX[i]=Math.abs(VX[i])*.4}if(x>VW-6){x=VW-6;VX[i]=-Math.abs(VX[i])*.4}if(y<6){y=6;VY[i]=Math.abs(VY[i])*.4}if(y>VH-6){y=VH-6;VY[i]=-Math.abs(VY[i])*.4}
+    X[i]=x;Y[i]=y;
+    if(fd<pit.r*.9&&Z[i]<40)BURN[i]=.001;
+  }
+  // 木から落ちる
+  if(n<target&&Math.random()<dt*2.2){const t=trees[Math.floor(Math.random()*trees.length)];const a=Math.random()*7,d=Math.random()*t.r*.9;const x=t.x+Math.cos(a)*d,y=t.y+Math.sin(a)*d;if(x>0&&y>0&&x<VW&&y<VH){addLeaf(x,y,rand(160,260));VZ[n-1]=-20}}
+  // たき火
+  fuel=Math.max(0,fuel-dt*(.9+fuel*.02));const tf=Math.min(1,fuel/35);fire+=(tf-fire)*Math.min(1,dt*1.5);
+  if(fire>.08){imo+=dt*fire*7;if(imo>=100){imo=0;imoCount++;bakeDone()}}
+  if(fire>.05&&Math.random()<dt*fire*6)crackle(.06+fire*.12);
+  const fl=fire*(REDUCED?40:110)*dt;for(let k=0;k<fl;k++){const a=Math.random()*7,d=Math.sqrt(Math.random())*pit.r*.7;flames.push({x:pit.x+Math.cos(a)*d,y:pit.y+Math.sin(a)*d*.8,vx:rand(-10,10),vy:-rand(40,110)*(.6+fire),t:0,life:rand(.5,1.1),s:rand(12,30)*(.6+fire*.7)})}
+  if(Math.random()<dt*fire*7)smoke.push({x:pit.x+rand(-20,20),y:pit.y-pit.r*.4,vx:rand(-8,8),vy:-rand(25,45),t:0,life:rand(3,5),s:rand(20,40)});
+  if(Math.random()<dt*fire*10)embers.push({x:pit.x+rand(-30,30),y:pit.y+rand(-20,10),vx:rand(-40,40),vy:-rand(60,160),t:0,life:rand(1,2.2)});
+  for(const p of flames){p.t+=dt;p.x+=p.vx*dt+Math.sin(time*8+p.y*.05)*12*dt;p.y+=p.vy*dt}flames=flames.filter(p=>p.t<p.life);
+  for(const p of smoke){p.t+=dt;p.x+=(p.vx+wind.x*1.5+gx*.3)*dt;p.y+=(p.vy+wind.y)*dt;p.s+=dt*18}smoke=smoke.filter(p=>p.t<p.life);
+  for(const p of embers){p.t+=dt;p.vx+=(wind.x+gx*.2)*dt;p.x+=p.vx*dt+Math.sin(time*5+p.life*9)*20*dt;p.y+=p.vy*dt;p.vy+=10*dt}embers=embers.filter(p=>p.t<p.life);
+  for(const s of streaks){s.t+=dt;s.x+=(wind.gx||100)*dt*1.6;s.y+=(wind.gy||0)*dt*1.6}streaks=streaks.filter(s=>s.t<s.life);
+  for(const p of potatoes){p.t+=dt;if(p.t<.9){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=600*dt;p.r+=dt*6}else p.y-=dt*4;if(Math.random()<dt*8)steam.push({x:p.x+rand(-8,8),y:p.y-12,t:0,life:rand(1,1.8),s:rand(6,12)})}potatoes=potatoes.filter(p=>p.t<6);
+  for(const s of steam){s.t+=dt;s.y-=30*dt;s.x+=Math.sin(s.t*4+s.life*7)*14*dt;s.s+=dt*10}steam=steam.filter(s=>s.t<s.life);
+}
+const IMO_WORDS=["ほくほく","ねっとり","しっとり","とろーり","香ばしい","蜜たっぷり"];
+function bakeDone(){const a=rand(-2.4,-.7);potatoes.push({x:pit.x,y:pit.y,vx:Math.cos(a)*160,vy:-380,t:0,rot:rand(-.6,.6),r:0});pop();
+  const w=IMO_WORDS[Math.floor(Math.random()*IMO_WORDS.length)];toast(`焼き芋 ${imoCount}本目！`,`${w}に焼けました`);say(`焼き芋が${imoCount}本焼けました`)}
+
+// ============ 描画 ============
+function draw(){
+  ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(ground,0,0);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  // 熾火の光
+  if(fire>.02){const g=ctx.createRadialGradient(pit.x,pit.y,0,pit.x,pit.y,pit.r*(2.2+fire*1.5));g.addColorStop(0,`rgba(255,140,40,${.45*fire})`);g.addColorStop(1,"rgba(255,140,40,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(pit.x,pit.y,pit.r*(2.2+fire*1.5),0,7);ctx.fill()}
+  // 地面の葉
+  for(let pass=0;pass<2;pass++){
+    for(let i=0;i<n;i++){const z=Z[i];if(pass===0?z>.5:z<=.5)continue;
+      const s=SZ[i]*(1+z*.004)/SPR_SIZE*1.5;const r=R[i];let c=Math.cos(r),sn=Math.sin(r);let sy=1;
+      if(z>.5){sy=Math.cos(TILT[i]);
+        // 影
+        ctx.globalAlpha=Math.max(.08,.32-z*.0012);ctx.setTransform(DPR*c*s,DPR*sn*s,-DPR*sn*s*Math.abs(sy),DPR*c*s*Math.abs(sy),DPR*(X[i]+z*.35),DPR*(Y[i]+z*.6));ctx.fillStyle="#1a2408";ctx.beginPath();ctx.ellipse(0,0,24,20,0,0,7);ctx.fill();ctx.globalAlpha=1}
+      const yy=Y[i]-z*.9;
+      if(BURN[i]>0){ctx.globalAlpha=Math.max(0,1-BURN[i]);ctx.filter="none"}
+      ctx.setTransform(DPR*c*s,DPR*sn*s,-DPR*sn*s*sy,DPR*c*s*sy,DPR*X[i],DPR*yy);
+      ctx.drawImage(SPR[SP[i]],-32,-32);
+      if(BURN[i]>0){ctx.globalAlpha=Math.min(.85,BURN[i]);ctx.fillStyle="#1a0d05";ctx.beginPath();ctx.arc(0,0,22,0,7);ctx.fill();ctx.globalAlpha=1}
+    }
+    ctx.setTransform(DPR,0,0,DPR,0,0);ctx.globalAlpha=1;
+    if(pass===0){drawFire();drawDog()}
+  }
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  // 煙
+  for(const p of smoke){const a=(1-p.t/p.life)*(1-p.t/p.life)*.13;ctx.fillStyle=`rgba(230,225,215,${a})`;ctx.beginPath();ctx.arc(p.x,p.y,p.s,0,7);ctx.fill()}
+  // 火の粉
+  ctx.globalCompositeOperation="lighter";
+  for(const p of embers){const a=1-p.t/p.life;ctx.fillStyle=`rgba(255,${150+Math.random()*80|0},60,${a})`;ctx.beginPath();ctx.arc(p.x,p.y,1.8+a*1.5,0,7);ctx.fill()}
+  ctx.globalCompositeOperation="source-over";
+  // 焼き芋
+  for(const p of potatoes){ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot+p.r);const k=Math.min(1,p.t*3);ctx.scale(k,k);
+    ctx.fillStyle="rgba(0,0,0,.3)";ctx.beginPath();ctx.ellipse(4,8,30,13,0,0,7);ctx.fill();
+    ctx.fillStyle="#7a1f3d";ctx.beginPath();ctx.ellipse(0,0,32,15,0,0,7);ctx.fill();ctx.fillStyle="#5a1530";ctx.beginPath();ctx.ellipse(-6,4,22,8,0,0,7);ctx.fill();
+    ctx.fillStyle="#ffcf4a";ctx.beginPath();ctx.ellipse(8,-1,15,10,0,0,7);ctx.fill();ctx.fillStyle="#ffe58a";ctx.beginPath();ctx.ellipse(10,-3,8,5,0,0,7);ctx.fill();
+    ctx.restore()}
+  for(const s of steam){ctx.fillStyle=`rgba(255,255,255,${(1-s.t/s.life)*.5})`;ctx.beginPath();ctx.arc(s.x,s.y,s.s,0,7);ctx.fill()}
+  // 木（上から見た樹冠）
+  for(const t of trees){const sw=Math.sin(time*.8+t.sway)*3+(wind.gust>0?Math.sin(time*6)*6:0);
+    ctx.save();ctx.translate(t.x+sw,t.y);ctx.globalAlpha=.93;
+    for(const b of t.blobs){const g=ctx.createRadialGradient(b.x-b.r*.3,b.y-b.r*.3,b.r*.1,b.x,b.y,b.r);g.addColorStop(0,shade(t.col,45));g.addColorStop(.6,b.c);g.addColorStop(1,shade(t.col,-70));ctx.fillStyle=g;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,7);ctx.fill()}
+    ctx.restore()}
+  ctx.globalAlpha=1;
+  // 木漏れ日
+  ctx.globalCompositeOperation="soft-light";
+  for(let k=0;k<6;k++){const x=VW*(.15+.14*k)+Math.sin(time*.07+k)*60,y=VH*(.3+.4*((k*37)%10)/10)+Math.cos(time*.05+k*2)*50,r=Math.min(VW,VH)*.25;const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,"rgba(255,230,160,.55)");g.addColorStop(1,"rgba(255,230,160,0)");ctx.fillStyle=g;ctx.fillRect(x-r,y-r,r*2,r*2)}
+  ctx.globalCompositeOperation="source-over";
+  // 朝の光
+  const lg=ctx.createLinearGradient(0,0,VW,VH);lg.addColorStop(0,"rgba(255,200,120,.16)");lg.addColorStop(.5,"rgba(255,200,120,0)");lg.addColorStop(1,"rgba(40,20,60,.18)");ctx.fillStyle=lg;ctx.fillRect(0,0,VW,VH);
+  // 突風の筋
+  for(const s of streaks){const a=Math.sin(s.t/s.life*Math.PI)*.45;const ang=Math.atan2(wind.gy,wind.gx);ctx.strokeStyle=`rgba(255,255,255,${a})`;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x-Math.cos(ang)*s.l,s.y-Math.sin(ang)*s.l);ctx.stroke()}
+  // カーソル
+  if(pointer.inside||pointer.down)drawCursor();
+}
+function drawFire(){
+  // 薪
+  ctx.save();ctx.translate(pit.x,pit.y);
+  for(let k=0;k<4;k++){ctx.save();ctx.rotate(k*Math.PI/4+.3);ctx.fillStyle="#4a2c16";ctx.fillRect(-pit.r*.6,-6,pit.r*1.2,12);ctx.fillStyle=fire>.05?`rgba(255,${90+fire*80|0},30,${.3+fire*.6})`:"#2a1a0e";ctx.fillRect(-pit.r*.25,-4,pit.r*.5,8);ctx.restore()}
+  ctx.restore();
+  // 焼き芋（アルミホイル）
+  if(true){ctx.save();ctx.translate(pit.x+pit.r*.25,pit.y+pit.r*.25);ctx.rotate(-.4);const g=ctx.createLinearGradient(-20,-10,20,10);g.addColorStop(0,"#f4f4f4");g.addColorStop(.5,"#9ea3a8");g.addColorStop(1,"#e6e6e6");ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(0,0,24,11,0,0,7);ctx.fill();ctx.restore()}
+  ctx.globalCompositeOperation="lighter";
+  for(const p of flames){const k=p.t/p.life;const a=(1-k);const s=p.s*(1-k*.6);const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,s);
+    g.addColorStop(0,`rgba(255,${240-k*120|0},${160-k*140|0},${a*.9})`);g.addColorStop(.5,`rgba(255,${120-k*60|0},20,${a*.5})`);g.addColorStop(1,"rgba(200,30,0,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,s,0,7);ctx.fill()}
+  ctx.globalCompositeOperation="source-over";
+}
+function drawDog(){
+  if(!dog)return;const d=dog;let hop=0;if(d.state==="jump")hop=Math.sin(Math.min(1,d.jump/.5)*Math.PI)*40;else hop=Math.abs(Math.sin(d.t*14))*6;
+  ctx.save();ctx.fillStyle="rgba(0,0,0,.28)";ctx.beginPath();ctx.ellipse(d.x,d.y+16,30-hop*.2,10,0,0,7);ctx.fill();
+  ctx.translate(d.x,d.y-hop);ctx.scale(d.dir*1.6,1.6);
+  const leg=Math.sin(d.t*18)*6;ctx.strokeStyle="#c9762f";ctx.lineWidth=6;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-12,6);ctx.lineTo(-14+leg,18);ctx.moveTo(12,6);ctx.lineTo(14-leg,18);ctx.stroke();
+  ctx.fillStyle="#d98a3d";ctx.beginPath();ctx.ellipse(0,0,24,13,0,0,7);ctx.fill();ctx.fillStyle="#fff1dc";ctx.beginPath();ctx.ellipse(4,6,15,6,0,0,7);ctx.fill();
+  ctx.strokeStyle="#d98a3d";ctx.lineWidth=7;ctx.beginPath();ctx.arc(-24,-8,7,Math.PI*.2,Math.PI*1.6);ctx.stroke();
+  ctx.fillStyle="#d98a3d";ctx.beginPath();ctx.arc(24,-10,12,0,7);ctx.fill();ctx.beginPath();ctx.moveTo(18,-18);ctx.lineTo(20,-30);ctx.lineTo(27,-20);ctx.fill();ctx.beginPath();ctx.moveTo(26,-19);ctx.lineTo(32,-28);ctx.lineTo(33,-15);ctx.fill();
+  ctx.fillStyle="#fff1dc";ctx.beginPath();ctx.ellipse(31,-6,7,5,0,0,7);ctx.fill();ctx.fillStyle="#222";ctx.beginPath();ctx.arc(37,-7,2.5,0,7);ctx.fill();ctx.beginPath();ctx.arc(27,-13,2.2,0,7);ctx.fill();
+  ctx.fillStyle="#e33";ctx.fillRect(14,-4,5,8);
+  ctx.restore();
+}
+function drawCursor(){
+  const P=pointer,RR=tool==="rake"?70:tool==="blow"?150:170;
+  ctx.save();ctx.strokeStyle=P.down?"rgba(255,240,200,.95)":"rgba(255,255,255,.75)";ctx.lineWidth=3;ctx.setLineDash(tool==="rake"?[]:[10,8]);ctx.lineDashOffset=tool==="suck"?time*40:-time*40;
+  ctx.beginPath();ctx.arc(P.x,P.y,RR,0,7);ctx.stroke();ctx.setLineDash([]);
+  ctx.strokeStyle="rgba(0,0,0,.6)";ctx.lineWidth=6;ctx.beginPath();ctx.arc(P.x,P.y,10,0,7);ctx.stroke();ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.stroke();
+  ctx.font=`700 28px ${FONT}`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(tool==="rake"?"🧹":tool==="blow"?"💨":"🌀",P.x+RR*.72,P.y-RR*.72);
+  ctx.restore();
+}
+
+// ============ HUD ============
+const elClean=document.getElementById("clean"),elFireT=document.getElementById("fireTxt"),elFireB=document.querySelector("#fireBar i"),elImoT=document.getElementById("imoTxt"),elImoB=document.querySelector("#imoBar i"),elImoC=document.getElementById("imoCount");
+let uiT=0;
+function ui(dt){uiT+=dt;if(uiT<.2)return;uiT=0;
+  const ground=n;const c=Math.max(0,Math.round(100*(1-ground/target)));elClean.textContent=c+"%";
+  elFireT.textContent=fire<.05?"消えている":fire<.35?"ちょろちょろ":fire<.7?"ぱちぱち":"ごうごう";elFireB.style.width=(fire*100).toFixed(0)+"%";
+  elImoT.textContent=Math.floor(imo)+"%";elImoB.style.width=imo.toFixed(1)+"%";elImoC.textContent=imoCount+"本";
+}
+
+// ============ ループ ============
+let FONT="";let last=performance.now();
+function frame(now){const dt=Math.min(.05,(now-last)/1000);last=now;if(started)update(dt);else{time+=dt;wind.x=10}draw();ui(dt);requestAnimationFrame(frame)}
+FONT=getComputedStyle(document.body).fontFamily;
+makeSprites();
+target=innerWidth*innerHeight<500000?1500:2600;
+resize();scatter();
+document.getElementById("nLeaves").textContent=n.toLocaleString()+"枚";
+document.getElementById("go").onclick=()=>{initAudio();if(AC&&AC.state==="suspended")AC.resume();started=true;const s=document.getElementById("start");s.style.transition="opacity .6s";s.style.opacity="0";setTimeout(()=>s.remove(),600);
+  // 最初の演出：つむじ風で葉が舞い上がる
+  for(let i=0;i<n;i++){if(Math.random()<.35){VZ[i]=rand(120,420);VX[i]=rand(-80,80);VY[i]=rand(-80,80);VR[i]=rand(-8,8)}}};
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
