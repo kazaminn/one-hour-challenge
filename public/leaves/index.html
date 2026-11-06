@@ -34,15 +34,21 @@ button{font:inherit;color:inherit}
 #start h2{font-size:clamp(40px,9vw,96px);margin:0;letter-spacing:.1em;text-shadow:0 6px 0 #6b2f0c,0 0 50px rgba(255,150,40,.7)}
 #start p{font-size:20px;line-height:1.7;color:var(--muted);margin:16px 0 22px}
 #start .btn{font-size:24px;padding:14px 32px;background:var(--accent);color:#2a1606}
+.fold{min-height:48px;min-width:48px;padding:6px 10px}
+#tools.collapsed>:not(.fold){display:none}
+#hud .head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#hud.collapsed .stat,#hud.collapsed .bar{display:none}
+#hud.collapsed{width:auto}
+#hud.collapsed .head h1{margin:0}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-@media (max-width:720px){#hud{padding:8px 12px;width:auto;right:12px}#hud h1{display:none}#tools{top:auto;bottom:70px;left:12px;right:12px;justify-content:center}.btn{font-size:16px;padding:6px 10px}}
+@media (max-width:720px){#hud{padding:8px 12px;width:auto;right:12px}#hud h1{font-size:17px}#tools{top:auto;bottom:70px;left:12px;right:12px;justify-content:center}.btn{font-size:16px;padding:6px 10px}#hint{display:none}}
 </style>
 </head>
 <body>
 <canvas id="cv" role="img" aria-label="落ち葉が積もった庭。熊手やブロワーで葉を集め、中央のたき火に入れると焼き芋が焼けます"></canvas>
 
 <section id="hud" class="panel" aria-label="庭のようす">
-  <h1>🍂 落ち葉と焼き芋</h1>
+  <div class="head"><h1>🍂 落ち葉と焼き芋</h1><button class="btn fold" id="hudFold" aria-expanded="true" aria-controls="hud" title="H キーでも開閉">たたむ</button></div>
   <div class="stat">庭のきれいさ<b id="clean">0%</b></div>
   <div class="stat">たき火の勢い<b id="fireTxt">消えている</b></div>
   <div class="bar" id="fireBar"><i></i></div>
@@ -52,6 +58,7 @@ button{font:inherit;color:inherit}
 </section>
 
 <nav id="tools" class="panel" aria-label="道具">
+  <button class="btn fold" id="toolsFold" aria-expanded="true" title="T キーでも開閉">▶ たたむ</button>
   <button class="btn" data-tool="rake" aria-pressed="true">🧹 熊手 <small>1</small></button>
   <button class="btn" data-tool="blow" aria-pressed="false">💨 吹く <small>2</small></button>
   <button class="btn" data-tool="suck" aria-pressed="false">🌀 吸う <small>3</small></button>
@@ -190,6 +197,11 @@ document.getElementById("windBtn").onclick=()=>{initAudio();gust()};
 const sBtn=document.getElementById("soundBtn");sBtn.onclick=()=>{soundOn=!soundOn;sBtn.setAttribute("aria-pressed",String(soundOn));sBtn.textContent=soundOn?"🔊 音":"🔇 音なし"};
 addEventListener("keydown",e=>{if(e.key==="1")setTool("rake");else if(e.key==="2")setTool("blow");else if(e.key==="3")setTool("suck");else if(e.key==="d"||e.key==="D")callDog();else if(e.key==="w"||e.key==="W")gust()});
 addEventListener("resize",resize);
+// パネルの開閉（状態はこのブラウザに覚えておく）
+function setFold(id,closed){const el=document.getElementById(id),b=document.getElementById(id+"Fold");el.classList.toggle("collapsed",closed);b.setAttribute("aria-expanded",String(!closed));
+  b.textContent=id==="tools"?(closed?"🧰 道具":"▶ たたむ"):(closed?"ひらく":"たたむ");try{localStorage.setItem("leaves-fold-"+id,closed?"1":"0")}catch(e){}}
+["tools","hud"].forEach(id=>{document.getElementById(id+"Fold").onclick=()=>setFold(id,!document.getElementById(id).classList.contains("collapsed"));let v=null;try{v=localStorage.getItem("leaves-fold-"+id)}catch(e){}if(v==="1")setFold(id,true)});
+addEventListener("keydown",e=>{if(e.key==="t"||e.key==="T")setFold("tools",!document.getElementById("tools").classList.contains("collapsed"));else if(e.key==="h"||e.key==="H")setFold("hud",!document.getElementById("hud").classList.contains("collapsed"))});
 let hintHidden=false;function hideHint(){if(hintHidden)return;hintHidden=true;setTimeout(()=>document.getElementById("hint").style.opacity="0",4000)}
 
 // ============ イベント ============
