@@ -34,6 +34,14 @@ button{font:inherit;color:inherit}
 #start h2{font-size:clamp(40px,9vw,96px);margin:0;letter-spacing:.1em;text-shadow:0 6px 0 #6b2f0c,0 0 50px rgba(255,150,40,.7)}
 #start p{font-size:20px;line-height:1.7;color:var(--muted);margin:16px 0 22px}
 #start .btn{font-size:24px;padding:14px 32px;background:var(--accent);color:#2a1606}
+#clear{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at center,rgba(40,20,5,.45),rgba(20,10,0,.8));z-index:10;text-align:center;padding:24px;opacity:0;transition:opacity .8s}
+#clear.show{opacity:1}
+#clear[hidden]{display:none}
+#clear h2{font-size:clamp(36px,8vw,84px);margin:0;letter-spacing:.08em;text-shadow:0 6px 0 #6b2f0c,0 0 50px rgba(255,150,40,.7)}
+#clear p{font-size:20px;line-height:1.8;color:var(--muted);margin:16px 0 22px}
+#clear .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+#clear .btn{font-size:20px;padding:12px 24px}
+#clear .btn.main{background:var(--accent);color:#2a1606}
 .fold{min-height:48px;min-width:48px;padding:6px 10px}
 #tools.collapsed>:not(.fold){display:none}
 #hud .head{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -70,6 +78,17 @@ button{font:inherit;color:inherit}
 <div id="hint" class="panel">押したままドラッグで葉を動かせます。真ん中のたき火に葉を入れると焼き芋が焼けます</div>
 <div id="toast" aria-hidden="true"></div>
 <div class="sr" id="live" aria-live="polite"></div>
+
+<div id="clear" hidden role="dialog" aria-modal="true" aria-labelledby="clearTitle">
+  <div>
+    <h2 id="clearTitle">庭がきれいになった！</h2>
+    <p>かかった時間 <b id="clearTime">0分0秒</b><br>焼けた焼き芋 <b id="clearImo">0本</b></p>
+    <div class="btns">
+      <button class="btn main" id="again">もう一度</button>
+      <button class="btn" id="stay">庭をながめる</button>
+    </div>
+  </div>
+</div>
 
 <div id="start">
   <div>
@@ -162,7 +181,7 @@ let wind={x:0,y:0,tx:8,ty:3,gust:0,gx:0,gy:0};
 let fuel=0,fire=0,imo=0,imoCount=0,burned=0,time=0;
 let flames=[],smoke=[],embers=[],streaks=[],potatoes=[],steam=[];
 let dog=null,nextDog=40,nextGust=18;
-let started=false;
+let started=false,cleared=false,playTime=0;
 
 function resize(){
   DPR=Math.min(2,devicePixelRatio||1);const oW=VW,oH=VH;VW=innerWidth;VH=innerHeight;cv.width=VW*DPR;cv.height=VH*DPR;
@@ -216,7 +235,7 @@ function say(m){document.getElementById("live").textContent=m}
 
 // ============ 更新 ============
 function update(dt){
-  time+=dt;
+  time+=dt;if(!cleared)playTime+=dt;
   // 風
   if(Math.random()<dt*.15){wind.tx=rand(-25,25);wind.ty=rand(-12,18)}
   wind.x+=(wind.tx-wind.x)*dt*.5;wind.y+=(wind.ty-wind.y)*dt*.5;
@@ -269,7 +288,7 @@ function update(dt){
     if(fd<pit.r*.9&&Z[i]<40)BURN[i]=.001;
   }
   // 木から落ちる
-  if(n<target&&Math.random()<dt*2.2){const t=trees[Math.floor(Math.random()*trees.length)];const a=Math.random()*7,d=Math.random()*t.r*.9;const x=t.x+Math.cos(a)*d,y=t.y+Math.sin(a)*d;if(x>0&&y>0&&x<VW&&y<VH){addLeaf(x,y,rand(160,260));VZ[n-1]=-20}}
+  if(!cleared&&n<target&&Math.random()<dt*2.2){const t=trees[Math.floor(Math.random()*trees.length)];const a=Math.random()*7,d=Math.random()*t.r*.9;const x=t.x+Math.cos(a)*d,y=t.y+Math.sin(a)*d;if(x>0&&y>0&&x<VW&&y<VH){addLeaf(x,y,rand(160,260));VZ[n-1]=-20}}
   // たき火
   fuel=Math.max(0,fuel-dt*(.9+fuel*.02));const tf=Math.min(1,fuel/35);fire+=(tf-fire)*Math.min(1,dt*1.5);
   if(fire>.08){imo+=dt*fire*7;if(imo>=100){imo=0;imoCount++;bakeDone()}}
@@ -380,9 +399,22 @@ const elClean=document.getElementById("clean"),elFireT=document.getElementById("
 let uiT=0;
 function ui(dt){uiT+=dt;if(uiT<.2)return;uiT=0;
   const ground=n;const c=Math.max(0,Math.round(100*(1-ground/target)));elClean.textContent=c+"%";
+  if(started&&!cleared&&c>=100)finish();
   elFireT.textContent=fire<.05?"消えている":fire<.35?"ちょろちょろ":fire<.7?"ぱちぱち":"ごうごう";elFireB.style.width=(fire*100).toFixed(0)+"%";
   elImoT.textContent=Math.floor(imo)+"%";elImoB.style.width=imo.toFixed(1)+"%";elImoC.textContent=imoCount+"本";
 }
+
+// ============ おしまい ============
+// 庭のきれいさが100%（表示と同じ丸め）になったら終わる。木から葉はもう落ちない。
+function finish(){cleared=true;pointer.down=false;
+  const m=Math.floor(playTime/60),s=Math.floor(playTime%60);
+  document.getElementById("clearTime").textContent=`${m}分${s}秒`;
+  document.getElementById("clearImo").textContent=imoCount+"本";
+  const el=document.getElementById("clear");el.hidden=false;requestAnimationFrame(()=>el.classList.add("show"));pop();
+  say(`庭がきれいになりました。かかった時間は${m}分${s}秒、焼き芋は${imoCount}本です`);
+  setTimeout(()=>document.getElementById("again").focus(),50)}
+document.getElementById("again").onclick=()=>location.reload();
+document.getElementById("stay").onclick=()=>{const el=document.getElementById("clear");el.classList.remove("show");setTimeout(()=>{el.hidden=true},800)};
 
 // ============ ループ ============
 let FONT="";let last=performance.now();
